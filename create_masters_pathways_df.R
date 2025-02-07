@@ -42,10 +42,10 @@ data_file_dir<-file.path("..","..")
 ## ---------------------------
 
 #pathsway database
-psd<-read_excel(file.path(data_file_dir, "psd_yo_may2022.xlsx"))
+psd<-read.csv(file.path(".", "sample_file.csv")) %>% select(-c(X))
 
 #read in access_master dataset
-access_master<-read_excel(file.path(data_file_dir, "access_master.xlsx"),
+access_master<-read_excel(file.path(".", "access_master.xlsx"),
                           sheet = 'master')
 access_master<-clean_names(access_master)
 
