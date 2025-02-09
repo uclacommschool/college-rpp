@@ -1,13 +1,13 @@
 ################################################################################
 ##
 ## [ PROJ ] < Community School Postsecondary Database >
-## [ FILE ] < create_sanky_graph.R >
+## [ FILE ] < create_sankey_graph.R >
 ## [ AUTH ] < Jeffrey Yo >
 ## [ INIT ] < 2/3/25 >
 ##
 ################################################################################
 
-#Goal: Creates sanky graph (adapted from Ariana's script).
+#Goal: Creates sankey graph (adapted from Ariana's script).
 
 ################################################################################
 
