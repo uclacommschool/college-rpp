@@ -20,6 +20,7 @@ library(readxl)
 library(knitr)
 library(htmlwidgets)
 library(magrittr)
+library(webshot)
 
 ## ---------------------------
 ## directory paths
