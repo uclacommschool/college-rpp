@@ -1,0 +1,55 @@
+---
+title: "Clean Post Secondary Database"
+format: gfm
+editor: visual
+---
+
+## Overview
+
+This README contains the codes and instructions to clean the UCLA Community Schools' postsecondary database.
+
+[Documentation](https://docs.google.com/document/d/1M090A6vtENs6DNSHB36u9FrIz8kg9DG05sGfT4XIZJs/edit?tab=t.0#heading=h.s52ldsjpnpbw):
+
+[Effective Dates](https://help.studentclearinghouse.org/sths/knowledge-base/about-effective-dates-and-academic-years/) - Pulled 3x a year
+
+1.  merging the NSC to the larger dataset
+    -   Download
+    -   Use the psd_update_func_rfk.R file to clean and merges the NSC data. It has code to create the missing data frame.
+    -   Need to merge students enrolled and students who graduated
+2.  Create Missing List
+    -   This dataset creates a missing dataframe that shows student who are missing data from the missing data pull. (Nov, Apr, Aug)
+    -   Page 7 of Documentation -
+        -   In the event a student has missing data for three consecutive academic years the UCLA Researcher will follow up for the following year. After three consecutive academic years of missing data the student will be determined as inactive and no longer will be followed up with. If the student reappears in the NSC StudentTracker Report, active tracking will resume. 
+        -   Remove them from the missing list. Mark them as "STOP Track" in the Year
+            -   E.g. If student has been missing for 3 years in the database, then write "Stop track" in notes section. Eg. 24-25, Will say "2025 Stop Track" for that student.
+        -   Remove any students who have a record saying they've graduated (we tracked for 8 years)
+        -   Only making a missing list after the Nov pull
+        -   Depending on the Year
+            -   
+    -   Missing a student has been missing the record
+3.  Create a school facing missing list
+    1.  We only do data collection 2 a year. One only do this in the Nov pull.
+        1.  This matters, especially when Karen is asking about the data.
+    2.  
+4.  Cleaning
+    1.  Identifying missing cases
+    2.  Identifying different types of post secondary plans
+        1.  less
+
+Start with the Post Secondary Guide
+
+-   needs to be updated for Mann
+
+-   haven't merged college going
+
+-   outcomes
+
+-   Processes
+
+    -   College going database - NSC data and puts it all into one
+
+    -   Added in Apr data pull
+
+    -   We need the NSC data pulls and go to the schools.
+
+    -   Know the degree goal they are in too
