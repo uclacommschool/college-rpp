@@ -163,9 +163,14 @@ psd_merge_list %>% count(record_term)
   
 #change the order of this term (Note: this needs to change every term)
 psd_merge_list$record_term <- factor(psd_merge_list$record_term,
-                          levels = c("plans", "winter", "spring", "summer", "fall",
-                                     "enrolled anytime after fall"),
+                          levels = c("NA", "plans", "winter", "spring", "summer", 
+                                     "enrolled anytime after fall", "fall"),
                           ordered = TRUE)
+
+psd_merge_list$record_year <- factor(psd_merge_list$record_year,
+                                     levels = c("NA", str_c(2012:2025)),
+                                     ordered = TRUE)
+
 
 #check
 test<-psd_merge_list %>% arrange(record_term)
@@ -294,6 +299,8 @@ previous_term <- previous_term %>%
   slice_tail(n = 1) %>%                       # keep the last row per group
   ungroup()
 
+check<-previous_term %>% count(record_year, record_term)
+
 ## -----------------------------------------------------------------------------
 ## Part 2.2 - Create Intermediate clean dataframe Part 1
 ## -----------------------------------------------------------------------------
@@ -304,8 +311,11 @@ psd_missing_list<-full_join(previous_term, sch_missing_list_v2,
 
 colnames(psd_missing_list)
 
+#filter out cases that have a record year of 2025
+test<-psd_missing_list %>% filter(record_year != "2025")
+
 #Update values from student_id to hs_grade_date
-test<-psd_missing_list %>% mutate(
+test<-test %>% mutate(
   student_id = case_when(
     is.na(student_id) ~ psd_id,
     TRUE ~ student_id),
@@ -324,6 +334,8 @@ test<-psd_missing_list %>% mutate(
   )
 )
 
+test2<-test %>% filter(record_year == "2024", record_term == "fall")
+
 ## -----------------------------------------------------------------------------
 ## Part 2.3 - Create Intermediate clean dataframe Part 2
 ## -----------------------------------------------------------------------------
@@ -340,51 +352,160 @@ test<-test %>%
     coll_grad_date = NA, degree_title = NA, degree_title = NA,
     degree_title = NA, major = NA, college_sequence = NA,
     program_code = NA, status_source = NA,
-    record_year = "2025", record_term = "enrolled anytime after fall",
+   # record_year = "2025", record_term = "enrolled anytime after fall",
     system_type = NA, notes = NA)
 
 #Update College sequence at the end
 
-#questions: what do you put for enrollment_begin and enrollment_ent
+#questions: what do you put for enrollment_begin and enrollment_ent?
 
 #use existing psd_merge_list to create school info list
 
-# sch_info_list<-psd_merge_list %>% count(college_code, college_name,
-#                                         college_state, cc_4year, public_private)
+sch_info_list<-psd_merge_list %>% count(college_code, college_name,
+                                        college_state, cc_4year, public_private,
+                                        system_type)
+#update column order and column names
+sch_info_list<-sch_info_list %>% select(college_name, everything())
+colnames(sch_info_list)<-c("college_name",
+                           str_c(colnames(sch_info_list)[2:length(colnames(sch_info_list))],"_sch"))
+sch_info_list<-sch_info_list %>% select(-c(n_sch))
+
+#filter out Duplicate MISSING DATA case
+sch_info_list<-sch_info_list %>% 
+  filter(!c(college_name == "MISSING DATA" & system_type_sch != "MISSING DATA"))
 
 #update the college_name using college_enrollment_or_career_vocation
-
 test<-test %>% mutate(
   college_name = case_when(
     college_enrollment_or_career_vocation %in% c("CAL POLY POMONA", "Cal Poly Pomona") ~
       "CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
     college_enrollment_or_career_vocation %in% 
-      c("CAL STATE NORTHRIDGE", "CSUN") ~ "CALIFORNIA STATE UNIVERSITY - NORTHRIDGE",
+      c("CAL STATE NORTHRIDGE", "CSUN","CSUN, MAY HAVE GRADUATED","GRADUATED, CSUN in 2025") ~
+      "CALIFORNIA STATE UNIVERSITY - NORTHRIDGE",
     college_enrollment_or_career_vocation == "CSU Channel Islands" ~ "CALIFORNIA STATE UNIV CHANNEL ISLANDS",
-    college_enrollment_or_career_vocation == "CSUDH" ~ "CALIFORNIA STATE UNIVERSITY - DOMINGUEZ HILLS",
-    college_enrollment_or_career_vocation == "CSULA" ~ "CALIFORNIA STATE UNIVERSITY - LOS ANGELES",
+    college_enrollment_or_career_vocation %in% 
+      c("CSUDH","GRADUATED FROM DOMINGUEZ HILLS","TRANSFERRED TO CSUDH") ~
+      "CALIFORNIA STATE UNIVERSITY - DOMINGUEZ HILLS",
+    college_enrollment_or_career_vocation %in% c("CSULA","CSULA WAS GRADUATING 2025",
+                                                 "GRADUATED CSULA","GRADUATED FROM CSULA") ~
+      "CALIFORNIA STATE UNIVERSITY - LOS ANGELES",
     college_enrollment_or_career_vocation == "Chico State" ~ "CALIFORNIA STATE UNIVERSITY - CHICO",
     college_enrollment_or_career_vocation == "LACC" ~ "LOS ANGELES CITY COLLEGE",
-    college_enrollment_or_career_vocation == "LATTC" ~ "LOS ANGELES TRADE TECHNICAL",
+    college_enrollment_or_career_vocation %in% 
+      c("LATTC","GRADUATED FROM LATTC") ~ "LOS ANGELES TRADE TECHNICAL",
     college_enrollment_or_career_vocation == "SMC" ~ "SANTA MONICA COLLEGE",
     college_enrollment_or_career_vocation == "UC Riverside" ~ "UNIVERSITY OF CALIFORNIA - RIVERSIDE",
     college_enrollment_or_career_vocation == "UC Santa Cruz" ~ "UNIVERSITY OF CALIFORNIA-SANTA CRUZ",
     college_enrollment_or_career_vocation == "UCD" ~ "UNIVERSITY OF CALIFORNIA-DAVIS",
-    college_enrollment_or_career_vocation == "UCLA" ~ "UNIVERSITY OF CALIFORNIA-LOS ANGELES",
+    college_enrollment_or_career_vocation %in% 
+      c("UCLA","GRADUATED UCLA","UCLA; MAY HAVE GRADUATED") ~ "UNIVERSITY OF CALIFORNIA-LOS ANGELES",
     college_enrollment_or_career_vocation %in% c("UC Riverside", "UCR") ~ "UNIVERSITY OF CALIFORNIA - RIVERSIDE",
     college_enrollment_or_career_vocation == "Woodbury University" ~ "WOODBURY UNIVERSITY",
+    college_enrollment_or_career_vocation == "GRADUATED FROM MILLS COLLEGE" ~ "MILLS COLLEGE",
+    college_enrollment_or_career_vocation == "Graduated from University of Greenwich" ~ "UNIVERSITY OF GREENWICH",
     college_enrollment_or_career_vocation %in% 
       c("NOT ENROLLED/WORKING","Not Enrolled/Working") ~ "NO ENROLLMENT",
-    is.na(college_enrollment_or_career_vocation) ~ "NA",
+    is.na(college_enrollment_or_career_vocation) ~ "MISSING DATA",
+
+    
   )
   
 )
 
-
 check<-test %>% count(college_name, college_enrollment_or_career_vocation)
+
+#Merge sch_info_list with the missing list to get college information
+test<-test %>% left_join(sch_info_list, by = "college_name")
+
+#update "college_code","college_state","cc_4year",public_private, system_type 
+test<-test %>% mutate(
+  college_code = college_code_sch,
+  college_state = college_state_sch,
+  cc_4year = cc_4year_sch,
+  public_private = public_private_sch,
+  system_type = system_type_sch
+) 
+  
+#update he_graduated and status_source
+test<-test %>% mutate(
+  he_graduated = case_when(
+    college_enrollment_or_career_vocation %in% 
+      c("GRADUATED","GRADUATED CSULA", "GRADUATED FROM COAST GUARD ACADEMY IN 2024",
+        "GRADUATED FROM CSULA","GRADUATED FROM DOMINGUEZ HILLS",
+        "GRADUATED FROM LATTC","GRADUATED FROM MILLS COLLEGE",
+        "GRADUATED UCLA","GRADUATED, CSUN in 2025","Graduated from University of Greenwich",
+        "NOT ENROLLED/GRADUATED") ~ "Y",
+    is.na(college_name) ~ NA,
+    college_name == "MISSING DATA" ~ NA,
+    TRUE ~ "N"),
+  status_source = "staff"
+)
+
+check<-test %>% count(he_graduated, college_name)
+check<-test %>% count(he_graduated, college_enrollment_or_career_vocation)  
+
+#update the teacher_college_counselor column
+test<-test %>% mutate(
+  teacher_college_counselor = case_when(
+    is.na(teacher_college_counselor) & !is.na(notes_sm) ~ "Cesare",
+    TRUE ~ teacher_college_counselor
+  )
+)
+
+#update notes column
+test<-test %>% mutate(
+  notes = case_when(
+    is.na(college_name)|(college_name %in% c("MISSING DATA","NO ENROLLMENT")) ~ NA,
+    TRUE ~ str_c("Cesare confirmed student is attending ", college_name)
+  )
+)
+
+#make a record_year = 2024 and record_term = fall version
+test1<-test %>% 
+  mutate(record_year = "2024", record_term = "fall")
+
+
+#make a record_year = 2025 and record_term = enrolled anytime after fall version
+test2<-test %>% 
+  mutate(record_year = "2025", 
+         record_term = "enrolled anytime after fall version")
+
+
+clean_data<-rbind(test1, test2) %>% arrange(student_id, record_year)
+
+
+left_missing_df<-clean_data %>% filter(is.na(college_name))
+
+write.csv(left_missing_df, 
+          file.path(box_file_dir,"Postsecondary Database",
+                    "UCLA Community School PSD", "UCLACS Follow Up",
+                    "unknown_cases_jy.csv"))
+
+
+
+
+check<-test %>% count(college_name)
+
+write.csv(clean_data, 
+          file.path(box_file_dir,"Postsecondary Database",
+                          "UCLA Community School PSD", "UCLACS Follow Up",
+                    "missing_list_jy_draft.csv"))
+
+write.csv(previous_term, 
+          file.path(box_file_dir,"Postsecondary Database",
+                    "UCLA Community School PSD", "UCLACS Follow Up",
+                    "previous_term_jy.csv"))
+
+#grad_test<-psd_merge_list %>% filter(he_graduated == "Y")
+
+
+
 
 
 write.csv(check, "college_xwalk.csv")
+
+#for grad, but in the college but mark "he_graduated" as Y, 
+#Mark coll_grad_date as "2025-07-01" - let me know if that works
 
 
 #manually update the school code 
