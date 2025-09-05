@@ -1,20 +1,13 @@
 ################################################################################
 ##
 ## [ PROJ ] < Community School Postsecondary Database >
-## [ FILE ] < 02-merge-missing-data.R >
+## [ FILE ] < 03-calculate-outcomes.R >
 ## [ AUTH ] < Jeffrey Yo >
 ## [ INIT ] < 9/4/25 >
 ##
 ################################################################################
 
-#Goal: Add the cleaned missing data into the PSD.
-
-#Script will add these 3 datasets together:
-
-#1.The cleaned missing list.
-#2.The Missing List containing all the "Stop Tracking Folks"
-#3.The 2024 Missing List Ariana already cleaned.
-#4.The existing PSD.
+#Goal: Calculates the outcomes of the data.
 
 ################################################################################
 
@@ -23,7 +16,6 @@
 ## ---------------------------
 library(tidyverse)
 library(readxl)
-library(googlesheets4)
 library(janitor)
 library(data.table)
 
@@ -50,30 +42,113 @@ box_file_dir<-"C:/Users/jyo/Box/College Data"
 ## load & inspect data
 ## ---------------------------
 
-#The 2024 Missing List Ariana already cleaned.
-psd_missing_24_ariana<-read_excel(file.path(box_file_dir,"Postsecondary Database",
-                            "UCLA Community School PSD", "UCLACS Follow Up",
-                            "2024-2025","psd_missing merge_april2025_dimagiba.xlsx"))
-
-
-#PSD
-psd<-read_excel(file.path(box_file_dir,"Postsecondary Database",
-                                     "UCLA Community School PSD", 
-                                     "29aug2025-psd-dimagiba.xlsx"))
-
-#The Missing List containing all the "Stop Tracking Folks"
-psd_stop_track_missing<-read_excel(file.path(box_file_dir,"Postsecondary Database",
-                                             "UCLA Community School PSD", "UCLACS Follow Up",
-                                             "2024-2025","missing_april2025_dimagiba.xlsx"))
-
 #cleaned_missing
-psd_missing<-fread(file.path(box_file_dir,"Postsecondary Database",
-                    "UCLA Community School PSD", "UCLACS Follow Up",
-                    "missing_list_jy_draft_ad_edits.csv"))
+psd<-fread(file.path(box_file_dir,"Postsecondary Database",
+                       "UCLA Community School PSD", 
+                       "9sept2025-psd-yo.csv"))
 
 ## -----------------------------------------------------------------------------
-## Part 1 - Clean the clean_missing file
+## Part 1 - Clean PSD
 ## -----------------------------------------------------------------------------
+
+title_types<-psd %>% count(degree_title)
+
+#clean degree title
+psd<-psd %>% mutate(
+  degree_type = case_when(
+    degree_title %in% c("AA TRANSFER","AS TRANSFER",
+                        "AS-TRANSFER","ASSOCIATE DEGREE",
+                        "ASSOCIATE IN ARTS","ASSOCIATE IN ARTS&SCIENCES-DTA",
+                        "ASSOCIATE OF ARTS","ASSOCIATE'S IN ARTS",
+                        "Associate Degree") ~ "AA",
+    
+    str_detect(degree_title, regex("bachelor", ignore_case = TRUE)) ~ "BA",
+    degree_title %in% c("B.A.","BACCALAUREATE DEGREE", "BS",
+                        "Bachelor of Science","BACELOR OF ARTS") ~ "BA",
+    degree_title %in% c("CREDENTIAL") ~ "CREDENTIAL",
+    str_detect(degree_title, regex("CERTIFICATE", ignore_case = TRUE)) ~ "CERTIFICATE",
+    str_detect(degree_title, regex("MASTER", ignore_case = TRUE)) ~ "ADVANCED",
+    degree_title %in% c("PSYC COGNATES") ~ "BA",
+    TRUE ~ NA
+  )
+)
+
+title_types2<-psd %>% count(degree_title, degree_type)
+
+#change into a list
+psd_list <- psd %>% split(~hs_grad_year)
+
+
+
+college_outcomes<-psd_list[["2017"]] 
+
+class_size<-college_outcomes %>% count(student_id)
+class_size<-nrow(class_size)
+grad_class<-college_outcomes %>% filter(he_graduated == "Y")
+
+
+test<-grad_class %>% 
+  mutate(completion_year = case_when(
+    coll_grad_date >= as.Date("2018-01-01") & coll_grad_date <= as.Date("2021-08-15") ~ "4-year",
+    coll_grad_date >= as.Date("2021-08-16") & coll_grad_date <= as.Date("2022-08-15") ~ "5-year",
+    coll_grad_date >= as.Date("2022-08-16") & coll_grad_date <= as.Date("2023-08-15") ~ "6-year",
+    coll_grad_date >= as.Date("2023-08-16") & coll_grad_date <= as.Date("2024-08-15") ~ "7-year",
+    coll_grad_date >= as.Date("2024-08-16") & coll_grad_date <= as.Date("2025-08-15") ~ "8-year",
+    (is.na(coll_grad_date) & (as.numeric(record_year) - as.numeric(hs_grad_year))<=4) ~ "4-year",
+    (is.na(coll_grad_date) & (as.numeric(record_year) - as.numeric(hs_grad_year))==5) ~ "5-year",
+    (is.na(coll_grad_date) & (as.numeric(record_year) - as.numeric(hs_grad_year))==6) ~ "6-year",
+    (is.na(coll_grad_date) & (as.numeric(record_year) - as.numeric(hs_grad_year))==7) ~ "7-year",
+    (is.na(coll_grad_date) & (as.numeric(record_year) - as.numeric(hs_grad_year))==8) ~ "8-year",
+  ))
+
+test2<-test %>% 
+
+
+
+
+#update degree titel
+test<-test %>% 
+  mutate(
+    
+    
+    
+  )
+
+
+
+test2<-test %>% group_by(completion_year) %>% 
+  summarize(
+    n = n(),
+    perc = n()/class_size
+  )
+
+
+# %>% group_by(hs_diploma) %>% 
+#   summarize(n = n(),
+#             perc = (n()/nrow(psd_list[["2023"]]) * 100) %>% round(2))
+
+
+
+#fitler he_grad yes, college_grad
+
+create_grad_count_perc<-function(df){
+  
+  update_df<-df %>% group_by(hs_diploma) %>% 
+    summarize(n = n(),
+              perc = (n()/nrow(df) * 100) %>% round(2))
+  
+}
+
+#Complete Certificate
+#Complete 2-year
+#complete 4-year
+
+
+college_outcomes<-psd_list[["2023"]] %>% group_by(hs_diploma) %>% 
+  summarize(n = n(),
+            perc = (n()/nrow(psd_list[["2023"]]) * 100) %>% round(2))
+  
+
 
 #remove unnecessary variables
 psd_missing<-psd_missing %>% 
@@ -270,7 +345,7 @@ full_psd<-full_psd %>% arrange(hs_grad_year, psd_id, record_year, record_term)
 write.csv(full_psd, 
           file.path(box_file_dir,"Postsecondary Database",
                     "UCLA Community School PSD", 
-                    "5sept2025-psd-yo.csv"))
+                    "9sept2025-psd-yo.csv"))
 
 ## -----------------------------------------------------------------------------
 ## END SCRIPT
