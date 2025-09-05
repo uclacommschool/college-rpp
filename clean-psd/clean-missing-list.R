@@ -41,6 +41,8 @@ box_file_dir<-"C:/Users/jyo/Box/College Data"
 ## helper functions
 ## ---------------------------
 
+# Opens browser for authentication (only once per session)
+gs4_auth()  
 
 ## ---------------------------
 ## load & inspect data
@@ -56,15 +58,9 @@ psd_merge_list<-read_excel(file.path(box_file_dir,"Postsecondary Database",
                                      "UCLA Community School PSD", 
                                      "29aug2025-psd-dimagiba.xlsx"))
 
-#C:\Users\jyo\Box\College Data\Postsecondary Database\UCLA Community School PSD\UCLACS Follow Up\2024-2025
-
 ## -----------------------------------------------------------------------------
 ## Part 1.1 - Read in School Facing Missing List
 ## -----------------------------------------------------------------------------
-
-# Opens browser for authentication (only once per session)
-gs4_auth()  
-
 
 #Note: only do this once the missing list is finished
 
@@ -155,7 +151,6 @@ psd_merge_list<-psd_merge_list %>%
   
   record_term == "NA" ~ NA,
   TRUE ~ record_term
-    
   ))
 
 #check
@@ -171,25 +166,14 @@ psd_merge_list$record_year <- factor(psd_merge_list$record_year,
                                      levels = c("NA", str_c(2012:2025)),
                                      ordered = TRUE)
 
-
 #check
 test<-psd_merge_list %>% arrange(record_term)
 
-  
-#record Term
-
-# 2 enrolled anytime after fall     1600
-# 3 enrolled at anytime              343
-# 4 enrolled at anytime after fall    17
-# 5 enrolled anytime after fall       14
-
-#Do all these values mean student is enroll at anytime after fall?
-#I'm assuming yes right now
 
 #clean 
-sch_info_list<-psd_merge_list %>% count(college_code, college_name,
-                                        college_state, cc_4year, public_private,
-                                        system_type)
+sch_info_list<-psd_merge_list %>% 
+  count(college_code, college_name,college_state,
+        cc_4year, public_private,system_type)
 
 psd_merge_list<-psd_merge_list %>% 
   mutate(
@@ -312,10 +296,10 @@ psd_missing_list<-full_join(previous_term, sch_missing_list_v2,
 colnames(psd_missing_list)
 
 #filter out cases that have a record year of 2025
-test<-psd_missing_list %>% filter(record_year != "2025")
+psd_missing_list<-psd_missing_list %>% filter(record_year != "2025")
 
 #Update values from student_id to hs_grade_date
-test<-test %>% mutate(
+psd_missing_list<-psd_missing_list %>% mutate(
   student_id = case_when(
     is.na(student_id) ~ psd_id,
     TRUE ~ student_id),
@@ -334,8 +318,6 @@ test<-test %>% mutate(
   )
 )
 
-test2<-test %>% filter(record_year == "2024", record_term == "fall")
-
 ## -----------------------------------------------------------------------------
 ## Part 2.3 - Create Intermediate clean dataframe Part 2
 ## -----------------------------------------------------------------------------
@@ -343,7 +325,7 @@ test2<-test %>% filter(record_year == "2024", record_term == "fall")
 #Update values from college_code to public_private
 #First mark all these values as NA
 
-test<-test %>% 
+psd_missing_list<-psd_missing_list %>% 
   mutate(
     college_code = NA,college_name = NA,college_state = NA,
     cc_4year = NA, public_private = NA,
@@ -354,10 +336,6 @@ test<-test %>%
     program_code = NA, status_source = NA,
    # record_year = "2025", record_term = "enrolled anytime after fall",
     system_type = NA, notes = NA)
-
-#Update College sequence at the end
-
-#questions: what do you put for enrollment_begin and enrollment_ent?
 
 #use existing psd_merge_list to create school info list
 
@@ -375,7 +353,7 @@ sch_info_list<-sch_info_list %>%
   filter(!c(college_name == "MISSING DATA" & system_type_sch != "MISSING DATA"))
 
 #update the college_name using college_enrollment_or_career_vocation
-test<-test %>% mutate(
+psd_missing_list<-psd_missing_list %>% mutate(
   college_name = case_when(
     college_enrollment_or_career_vocation %in% c("CAL POLY POMONA", "Cal Poly Pomona") ~
       "CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
@@ -407,18 +385,16 @@ test<-test %>% mutate(
       c("NOT ENROLLED/WORKING","Not Enrolled/Working") ~ "NO ENROLLMENT",
     is.na(college_enrollment_or_career_vocation) ~ "MISSING DATA",
 
-    
   )
-  
 )
 
-check<-test %>% count(college_name, college_enrollment_or_career_vocation)
+check<-psd_missing_list %>% count(college_name, college_enrollment_or_career_vocation)
 
 #Merge sch_info_list with the missing list to get college information
-test<-test %>% left_join(sch_info_list, by = "college_name")
+psd_missing_list<-psd_missing_list %>% left_join(sch_info_list, by = "college_name")
 
 #update "college_code","college_state","cc_4year",public_private, system_type 
-test<-test %>% mutate(
+psd_missing_list<-psd_missing_list %>% mutate(
   college_code = college_code_sch,
   college_state = college_state_sch,
   cc_4year = cc_4year_sch,
@@ -427,7 +403,7 @@ test<-test %>% mutate(
 ) 
   
 #update he_graduated and status_source
-test<-test %>% mutate(
+psd_missing_list<-psd_missing_list %>% mutate(
   he_graduated = case_when(
     college_enrollment_or_career_vocation %in% 
       c("GRADUATED","GRADUATED CSULA", "GRADUATED FROM COAST GUARD ACADEMY IN 2024",
@@ -441,11 +417,12 @@ test<-test %>% mutate(
   status_source = "staff"
 )
 
-check<-test %>% count(he_graduated, college_name)
-check<-test %>% count(he_graduated, college_enrollment_or_career_vocation)  
+check<-psd_missing_list %>% count(he_graduated, college_name)
+check<-psd_missing_list %>% 
+  count(he_graduated, college_enrollment_or_career_vocation)  
 
 #update the teacher_college_counselor column
-test<-test %>% mutate(
+psd_missing_list<-psd_missing_list %>% mutate(
   teacher_college_counselor = case_when(
     is.na(teacher_college_counselor) & !is.na(notes_sm) ~ "Cesare",
     TRUE ~ teacher_college_counselor
@@ -453,7 +430,7 @@ test<-test %>% mutate(
 )
 
 #update notes column
-test<-test %>% mutate(
+psd_missing_list<-psd_missing_list %>% mutate(
   notes = case_when(
     is.na(college_name)|(college_name %in% c("MISSING DATA","NO ENROLLMENT")) ~ NA,
     TRUE ~ str_c("Cesare confirmed student is attending ", college_name)
@@ -461,87 +438,42 @@ test<-test %>% mutate(
 )
 
 #make a record_year = 2024 and record_term = fall version
-test1<-test %>% 
+psd_missing_list1<-psd_missing_list %>% 
   mutate(record_year = "2024", record_term = "fall")
 
 
 #make a record_year = 2025 and record_term = enrolled anytime after fall version
-test2<-test %>% 
+psd_missing_list2<-psd_missing_list %>% 
   mutate(record_year = "2025", 
          record_term = "enrolled anytime after fall version")
 
+#merge into a clean dataset
+clean_data<-rbind(psd_missing_list1, psd_missing_list2) %>% 
+  arrange(student_id, record_year)
 
-clean_data<-rbind(test1, test2) %>% arrange(student_id, record_year)
-
-
+#note any remaining cases
 left_missing_df<-clean_data %>% filter(is.na(college_name))
-
-write.csv(left_missing_df, 
-          file.path(box_file_dir,"Postsecondary Database",
-                    "UCLA Community School PSD", "UCLACS Follow Up",
-                    "unknown_cases_jy.csv"))
-
-
-
-
-check<-test %>% count(college_name)
-
-write.csv(clean_data, 
-          file.path(box_file_dir,"Postsecondary Database",
-                          "UCLA Community School PSD", "UCLACS Follow Up",
-                    "missing_list_jy_draft.csv"))
-
-write.csv(previous_term, 
-          file.path(box_file_dir,"Postsecondary Database",
-                    "UCLA Community School PSD", "UCLACS Follow Up",
-                    "previous_term_jy.csv"))
-
-#grad_test<-psd_merge_list %>% filter(he_graduated == "Y")
-
-
-
-
-
-write.csv(check, "college_xwalk.csv")
-
-#for grad, but in the college but mark "he_graduated" as Y, 
-#Mark coll_grad_date as "2025-07-01" - let me know if that works
-
-
-#manually update the school code 
-
-
-
-
-
-
-test2<-test %>% select(college_name, college_enrollment_or_career_vocation,
-                       teacher_college_counselor)
-
-
-#clean data
-
-#Business Rules
-#if the student is marked blank: mark MISSING DATA FROM college_code to public_private is 
-#marked MISSING DATA, notes are NA
-
-
-
-test<-previous_term %>% filter(psd_id == "2024TUSF81")
-test<-test %>% arrange(record_year)
-
-#How do you transform each variable
-
-
-#write.csv(data.frame(colnames(psd_merge_list)), "col_list.csv")
-
-
 
 ## -----------------------------------------------------------------------------
 ## Part 3 - Save and Export Files
 ## -----------------------------------------------------------------------------
 
+# write.csv(left_missing_df, 
+#           file.path(box_file_dir,"Postsecondary Database",
+#                     "UCLA Community School PSD", "UCLACS Follow Up",
+#                     "unknown_cases_jy.csv"))
 
+#write.csv(data.frame(colnames(psd_merge_list)), "col_list.csv")
+
+write.csv(clean_data, 
+          file.path(box_file_dir,"Postsecondary Database",
+                    "UCLA Community School PSD", "UCLACS Follow Up",
+                    "missing_list_jy_draft.csv"))
+
+# write.csv(previous_term, 
+#           file.path(box_file_dir,"Postsecondary Database",
+#                     "UCLA Community School PSD", "UCLACS Follow Up",
+#                     "previous_term_jy.csv"))
 
 ## -----------------------------------------------------------------------------
 ## END SCRIPT
