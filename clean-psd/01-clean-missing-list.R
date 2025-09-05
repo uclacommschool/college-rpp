@@ -291,9 +291,17 @@ check<-previous_term %>% count(record_year, record_term)
 
 #Merge the previous_term dataset with the missing list
 psd_missing_list<-full_join(previous_term, sch_missing_list_v2,
-                by = "psd_id")
+                by = "psd_id") %>% 
+  mutate(
+    hs_grad_year = case_when(
+      is.na(hs_grad_year) ~ "2024",
+      TRUE ~ hs_grad_year
+    )
+  )
 
+#check
 colnames(psd_missing_list)
+psd_missing_list %>% count(hs_grad_year)
 
 #filter out cases that have a record year of 2025
 psd_missing_list<-psd_missing_list %>% filter(record_year != "2025")
@@ -313,7 +321,7 @@ psd_missing_list<-psd_missing_list %>% mutate(
   req_return_field = NA,
   high_school_code = "051662",
   hs_grad_date = case_when(
-    is.na(hs_grad_date) ~ as.Date("2024-06-10"),
+    hs_grad_year =="2024" ~ as.Date("2024-06-10"),
     TRUE ~ hs_grad_date
   )
 )
