@@ -1,7 +1,7 @@
 ################################################################################
 ##
 ## [ PROJ ] < College Data Project >
-## [ FILE ] < psd_update_func_rfk.R >
+## [ FILE ] < 01-merge-nsc-to-psd.R >
 ## [ AUTH ] < Jeffrey Yo / yjeffrey77 >
 ## [ INIT ] < 4/30/2022, updated 02/08/2025 >
 ##
