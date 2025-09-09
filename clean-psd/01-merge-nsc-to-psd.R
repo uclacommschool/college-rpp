@@ -41,6 +41,13 @@ source(file.path(".","psd_rfk_function_list.R"))
 ## Part 2 - Clean nsc Data
 ## -----------------------------------------------------------------------------
 
+# nsc_student_detail_report<-"10042443_10042443-198410-DETAIL-EFFDT-20250416-RUNDT-20250808.csv"
+# master_file<- "uclacs_all_studentlist_2012-2024.xlsx"
+# start_date<-'2024-10-01'
+# 
+# source(file.path())
+
+
 #Steps
 #1a. manipulating nsc data (clean_names_nsc_data function)
 nsc_data <- clean_names_nsc_data(file.path(".", "10042443_10042443-198410-DETAIL-EFFDT-20250416-RUNDT-20250808.csv")) 
@@ -100,8 +107,12 @@ rm(nsc_data_anti)#nsc_data_antit #remove data frames
 
 #9.select nsc into effective dates
 
+
+### CODE THAT ALWAYS CHANGES WHEN UPDATING 
 april2025_nsc<- nsc_data %>% filter(between(enrollment_begin, as.Date('2024-10-01'), as.Date('2025-04-07'))) 
 april2025_nsc_grads<-nsc_data %>%filter(between(coll_grad_date,as.Date('2024-09-21'), as.Date('2025-03-15')))
+###
+
 
 summer_nsc <- nsc_data %>% filter(record_year == "2024", record_term == "summer")
 fall_nsc <-nsc_data %>% filter(record_year == "2024", record_term == "fall")
