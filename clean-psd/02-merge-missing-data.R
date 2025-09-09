@@ -89,7 +89,7 @@ colnames(psd_missing) == colnames(psd)
 #filter out Class of 2024
 psd_missing<-psd_missing %>% filter(hs_grad_year != "2024")
 
-#clean dates for hs_grad_date and coll_grad_date
+#clean dates for coll_grad_date
 psd_missing <-psd_missing %>% mutate(coll_grad_date = mdy(coll_grad_date))
 
 ## -----------------------------------------------------------------------------

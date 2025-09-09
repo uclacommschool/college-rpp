@@ -3,7 +3,7 @@
 ## [ PROJ ] < College Data Project >
 ## [ FILE ] < psd_update_func_rfk.R >
 ## [ AUTH ] < Jeffrey Yo / yjeffrey77 >
-## [ INIT ] < 4/30/2022, updated 02/08/2025 >
+## [ INIT ] < 4/30/2022, updated 08/25/2025 >
 ##
 ################################################################################
 
@@ -43,7 +43,7 @@ source(file.path(".","psd_rfk_function_list.R"))
 
 #Steps
 #1a. manipulating nsc data (clean_names_nsc_data function)
-nsc_data <- clean_names_nsc_data(file.path(".", "10042443_10042443-198410-DETAIL-EFFDT-20250416-RUNDT-20250808.csv")) 
+nsc_data <- clean_names_nsc_data(file.path(".", "10042443_10042443-199426-DETAIL-EFFDT-20250821-RUNDT-20250829.csv")) 
 #1b. check
 names(nsc_data)
 
@@ -69,7 +69,7 @@ nsc_data<- nsc_data %>%
          program_code) %>% 
   rename(college_name = 'college_name2')
 
-nsc_data %>% group_by(college_name) %>% summarize(num_names=n())  #check
+nsc_data %>% group_by(college_name) %>% summarize(num_names=n()) %>% print( n = 93)  #check for new colleges
 
 #count only enrollment not graduation or missing
 str_view(string =nsc_data$enrollment_begin, pattern = '^\\d{4}') #record_year
@@ -83,8 +83,8 @@ nsc_data <- psd_var_nsc(nsc_data)
 system_types<- nsc_data %>% group_by(system_type) %>% summarize(num_names=n())                                                                       
 
 #6. load master student list using master_file
-master_stu_list<-master_file(file.path(".",
-                                       "uclacs_all_studentlist_2012-2024.xlsx"))
+master_stu_list<-master_file(file.path(".","uclacs_all_studentlist_2012-2024.xlsx"))
+
 
 #7. merge nsc data with masterlist using merge_nsc_master function
 nsc_data<-merge_nsc_master(nsc_data, master_stu_list)
@@ -100,8 +100,8 @@ rm(nsc_data_anti)#nsc_data_antit #remove data frames
 
 #9.select nsc into effective dates
 
-april2025_nsc<- nsc_data %>% filter(between(enrollment_begin, as.Date('2024-10-01'), as.Date('2025-04-07'))) 
-april2025_nsc_grads<-nsc_data %>%filter(between(coll_grad_date,as.Date('2024-09-21'), as.Date('2025-03-15')))
+aug2025_nsc<- nsc_data %>% filter(between(enrollment_begin, as.Date('2025-05-12'), as.Date('2025-07-07'))) 
+aug2025_nsc_grads<-nsc_data %>%filter(between(coll_grad_date,as.Date('2024-03-21'), as.Date('2025-06-17')))
 
 summer_nsc <- nsc_data %>% filter(record_year == "2024", record_term == "summer")
 fall_nsc <-nsc_data %>% filter(record_year == "2024", record_term == "fall")
@@ -109,7 +109,7 @@ winter_nsc <-nsc_data %>% filter(record_year == "2025", record_term == "winter")
 spring_nsc<-nsc_data %>% filter(record_year == "2025", record_term == "spring")
 
 #10. load and cleans most recent psd from previous session
-psd_data<-psd_data_clean(file.path(".", "psd_dimagiba_march2025.xlsx"))  
+psd_data<-psd_data_clean(file.path(".","22aug2025-psd-dimagiba.xlsx"))  
 psd_ids <- select(master_stu_list, student_id, psd_id)
 psd_data <-left_join(psd_data, psd_ids, by = "student_id") #January 2024 created psd specific id
 
@@ -119,7 +119,7 @@ names(psd_data)
 names(winter_nsc)
 names(spring_nsc)
 
-psd_data_nsc_only <- rbind(psd_data,april2025_nsc, april2025_nsc_grads)
+psd_data_nsc_only <- rbind(psd_data,aug2025_nsc, aug2025_nsc_grads)
 
 #12. sort by graduate date, last name, first name, middle name, enrollment date
 psd_data_nsc_only <- psd_data_nsc_only %>%
@@ -127,7 +127,7 @@ psd_data_nsc_only <- psd_data_nsc_only %>%
           middle_name, enrollment_begin)
 
 #13. write data
-write.xlsx(psd_data_nsc_only,file = "aug2025-psd-dimagiba.xlsx") #missing follow updata 2023-2024
+write.xlsx(psd_data_nsc_only,file = "29aug2025-psd-dimagiba.xlsx") #missing follow updata 2023-2024
 
 #create missing list for class of 2014-2022
 #merge master list  with nsc records to find missing students, didnt save code from nov2021.
