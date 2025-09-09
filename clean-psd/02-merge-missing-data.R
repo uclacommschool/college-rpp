@@ -26,6 +26,7 @@ library(readxl)
 library(googlesheets4)
 library(janitor)
 library(data.table)
+library(lubridate)
 
 ## ---------------------------
 ## directory paths
@@ -39,7 +40,7 @@ code_file_dir<-file.path(".")
 
 data_file_dir<-file.path("..","..")
 
-box_file_dir<-"C:/Users/jyo/Box/College Data"
+box_file_dir<-file.path(Sys.getenv("HOME"), "Library", "CloudStorage", "Box-Box", "College Data")
 
 ## ---------------------------
 ## helper functions
@@ -87,6 +88,9 @@ colnames(psd_missing) == colnames(psd)
 
 #filter out Class of 2024
 psd_missing<-psd_missing %>% filter(hs_grad_year != "2024")
+
+#clean dates for hs_grad_date and coll_grad_date
+psd_missing <-psd_missing %>% mutate(coll_grad_date = mdy(coll_grad_date))
 
 ## -----------------------------------------------------------------------------
 ## Part 1.2 - Clean the stop track students list
@@ -141,7 +145,7 @@ psd_temp<-psd_temp %>% unique()
 ## Part 2.1 - Merge all Data sources together
 ## -----------------------------------------------------------------------------
 
-full_psd<-rbind(psd, psd_temp, psd_missing_24_ariana) 
+full_psd<-rbind(psd, psd_temp, psd_missing_24_ariana, psd_missing) 
 
 #clean full_psd
 
