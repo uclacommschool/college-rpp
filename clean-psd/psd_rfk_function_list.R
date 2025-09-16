@@ -25,20 +25,22 @@
 
 # manipulating nsc data ----
 #create clean_nsc_data function, which changes variable names of nsc dataset
-clean_names_nsc_data<-function(data_path){
+clean_names_nsc_data<-function(nsc_data){
   # *read in NSC data ----
-  nsc_data<- read_csv(file.path(data_path)) #make sure to change directory to access nsc files
-  names(nsc_data)<- tolower(names(nsc_data)) #lower cases variables
-  nsc_data <- nsc_data %>% rename(record_found = 'record_found_y/n', #rename variables with / 
-                                  college_code = 'college_code/branch',
-                                  cc_4year = '2-year/4-year',
-                                  public_private = 'public/private',
-                                  he_graduated = 'graduated', #specify higher ed graduation
-                                  coll_grad_date = 'graduation_date',
-                                  hs_grad_date = 'high_school_grad_date',
-                                  req_return_field = 'requester_return_field') 
+  #nsc_data<- read_csv(file.path(data_path)) #make sure to change directory to access nsc files
+  nsc_data<- clean_names(nsc_data)
+  #names(nsc_data)<- tolower(names(nsc_data)) #lower cases variables
+  nsc_data <- nsc_data %>% rename(record_found = record_found_y_n, #rename variables with / 
+                                  college_code = college_code_branch,
+                                  cc_4year = x2_year_4_year,
+                                  public_private = public_private,
+                                  he_graduated = graduated, #specify higher ed graduation
+                                  coll_grad_date = graduation_date,
+                                  hs_grad_date = high_school_grad_date,
+                                  req_return_field = requester_return_field) 
   return(nsc_data)
 }
+
 
 # **get stu id mutate ----
 #Add student id variable using stu_id_nsc_data function
@@ -263,14 +265,14 @@ merge_nsc_master<-function(nsc_data, master_data){
 }
 
 #function psd_data_clean loads and cleans most recent psd from previous session
-psd_data_clean<-function(psd_file_path){
-  psd_data <- read_excel(file.path(psd_file_path))
+psd_data_clean<-function(psd_data){
+  #psd_data <- read_excel(file.path(psd_file_path))
   psd_data <- data.frame(psd_data)
   # **change strings to dates ----
-  test <- psd_data %>% mutate(enrollment_begin_date = ymd(enrollment_begin), 
-                              enrollment_end_date = ymd(enrollment_end),
-                              coll_grad_date_date = ymd(coll_grad_date),
-                              hs_grad_date_date = ymd(hs_grad_date)) 
+  test <- psd_data %>% mutate(enrollment_begin_date = mdy(enrollment_begin), 
+                              enrollment_end_date = mdy(enrollment_end),
+                              coll_grad_date_date = mdy(coll_grad_date),
+                              hs_grad_date_date = mdy(hs_grad_date)) 
   attributes(test$enrollment_begin_date)
   test <- test %>% select("student_id","first_name","middle_name","last_name","name_suffix",      
                           "record_found","req_return_field" , "high_school_code","hs_grad_date_date", "college_code" ,    
@@ -278,7 +280,7 @@ psd_data_clean<-function(psd_file_path){
                           "enrollment_end_date","enrollment_status","he_graduated" ,"coll_grad_date_date", "degree_title",     
                           "major" ,"college_sequence" , "program_code" ,"status_source","record_year" ,"record_term" ,
                           "system_type", "hs_grad_year","gender", "race_ethnicity", 
-                          "poverty_indicator" ,"hs_diploma","notes") 
+                          "poverty_indicator" ,"hs_diploma","notes", "psd_id") 
   
   psd_data <-  test %>%rename(hs_grad_date ='hs_grad_date_date', #rename date variables
                               enrollment_begin = 'enrollment_begin_date',

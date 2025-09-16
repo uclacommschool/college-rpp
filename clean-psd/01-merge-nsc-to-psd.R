@@ -18,39 +18,39 @@ library(labelled)
 library(dplyr)
 library(stringr)
 library(openxlsx)
+library(janitor)
 
 ## ---------------------------
 ## directory paths
 ## ---------------------------
 
-psd_dir <- file.path('.')
+code_file_dir<-file.path(".")
+
+data_file_dir<-file.path("..","..")
 
 ## -----------------------------------------------------------------------------
-## Part 1 - Create Helper Functions
+## helper functions
 ## -----------------------------------------------------------------------------
 
 #run the psd_rfk_function_list.R script, which contains all the helper 
 #functions to clean and create the NSC data with the existing PSD data.
 
 #use "source" function to run the script: 
-"source(directory location of psd_rfk_function_list.R)"
-
 source(file.path(".","psd_rfk_function_list.R"))
 
 ## -----------------------------------------------------------------------------
-## Part 2 - Clean nsc Data
+## load all raw data sets
+## -----------------------------------------------------------------------------
+nsc_detail_report <-read_csv(file.path("..", "10102683hsst_10102683-198894-DETAIL-EFFDT-20250821-RUNDT-20250822.csv"))
+master_stu_list<- read_excel(file.path("..", "mann-master-student-list-21-24.xlsx")) 
+previous_psd <- read_csv(file.path("..", "09sept-2025-mann-psd-dimagiba.csv"))
+## -----------------------------------------------------------------------------
+##  Part 1 clean nsc data set
 ## -----------------------------------------------------------------------------
 
-# nsc_student_detail_report<-"10042443_10042443-198410-DETAIL-EFFDT-20250416-RUNDT-20250808.csv"
-# master_file<- "uclacs_all_studentlist_2012-2024.xlsx"
-# start_date<-'2024-10-01'
-# 
-# source(file.path())
+#1a. manipulating nsc data (clean_names_nsc_data function
+nsc_data <-clean_names_nsc_data(nsc_detail_report)
 
-
-#Steps
-#1a. manipulating nsc data (clean_names_nsc_data function)
-nsc_data <- clean_names_nsc_data(file.path(".", "10042443_10042443-199426-DETAIL-EFFDT-20250821-RUNDT-20250829.csv")) 
 #1b. check
 names(nsc_data)
 
@@ -85,18 +85,25 @@ str_view(string =nsc_data$enrollment_begin,
 
 #5. run psd_var_nsc function
 nsc_data <- psd_var_nsc(nsc_data)
+names(nsc_data)
 
 #5. check system type 
-system_types<- nsc_data %>% group_by(system_type) %>% summarize(num_names=n())                                                                       
+system_types<- nsc_data %>% group_by(system_type) %>% summarize(num_names=n())  
 
-#6. load master student list using master_file
-master_stu_list<-master_file(file.path(".","uclacs_all_studentlist_2012-2024.xlsx"))
-
+## -----------------------------------------------------------------------------
+## Part 2 - clean master student list
+## -----------------------------------------------------------------------------
+master_stu_list <- master_file(master_stu_list)
+names(master_stu_list)
+## -----------------------------------------------------------------------------
+## Part 2 - merge clean nsc data with master student list
+## -----------------------------------------------------------------------------
 
 #7. merge nsc data with masterlist using merge_nsc_master function
 nsc_data<-merge_nsc_master(nsc_data, master_stu_list)
-
-#8. check
+names(nsc_data)
+#8. check merge 
+names(nsc_data)
 #create object of obs that didn't merge
 nsc_data_anti <- nsc_data %>%
   anti_join(master_stu_list, by = "student_id") #assess join
@@ -105,37 +112,25 @@ nsc_data_anti %>% select(last_name,first_name) %>% count(student_id)
 nsc_data_anti <- nsc_data_anti %>% filter(record_found == "N")
 rm(nsc_data_anti)#nsc_data_antit #remove data frames
 
-#9.select nsc into effective dates
+#9.select nsc records to merge into psd by date 
 
-<<<<<<< HEAD:clean-psd/psd_update_func_rfk.R
-aug2025_nsc<- nsc_data %>% filter(between(enrollment_begin, as.Date('2025-05-12'), as.Date('2025-07-07'))) 
-aug2025_nsc_grads<-nsc_data %>%filter(between(coll_grad_date,as.Date('2024-03-21'), as.Date('2025-06-17')))
-=======
-
-### CODE THAT ALWAYS CHANGES WHEN UPDATING 
-april2025_nsc<- nsc_data %>% filter(between(enrollment_begin, as.Date('2024-10-01'), as.Date('2025-04-07'))) 
-april2025_nsc_grads<-nsc_data %>%filter(between(coll_grad_date,as.Date('2024-09-21'), as.Date('2025-03-15')))
-###
-
->>>>>>> 6bdc83ccc2061e5973211a67e77467a7d5227b63:clean-psd/01-merge-nsc-to-psd.R
-
-summer_nsc <- nsc_data %>% filter(record_year == "2024", record_term == "summer")
-fall_nsc <-nsc_data %>% filter(record_year == "2024", record_term == "fall")
-winter_nsc <-nsc_data %>% filter(record_year == "2025", record_term == "winter")
-spring_nsc<-nsc_data %>% filter(record_year == "2025", record_term == "spring")
+##CODE THAT ALWAYS CHANGES WHEN UPDATING
+nsc_enrollment_data<- nsc_data %>% filter(between(enrollment_begin, as.Date('2022-04-01'), as.Date('2023-04-30')))  #filters enrollment records by date
+nsc_grads_data<-nsc_data %>%filter(between(coll_grad_date,as.Date('2022-04-21'), as.Date('2025-08-30'))) #filters graduation records by date
+##
 
 #10. load and cleans most recent psd from previous session
-psd_data<-psd_data_clean(file.path(".","22aug2025-psd-dimagiba.xlsx"))  
-psd_ids <- select(master_stu_list, student_id, psd_id)
-psd_data <-left_join(psd_data, psd_ids, by = "student_id") #January 2024 created psd specific id
+psd_data<-psd_data_clean(previous_psd)  
+names(psd_data)
+#psd_data <-left_join(psd_data, psd_ids, by = "student_id") #January 2024 created psd specific id
 
 
 #11. bind to enrollment term to most up to date psd
 names(psd_data)
-names(winter_nsc)
-names(spring_nsc)
+names(nsc_enrollment_data)
+names(nsc_grads_data)
 
-psd_data_nsc_only <- rbind(psd_data,aug2025_nsc, aug2025_nsc_grads)
+psd_data_nsc_only <- bind_rows(psd_data, nsc_enrollment_data, nsc_grads_data)
 
 #12. sort by graduate date, last name, first name, middle name, enrollment date
 psd_data_nsc_only <- psd_data_nsc_only %>%
@@ -143,7 +138,7 @@ psd_data_nsc_only <- psd_data_nsc_only %>%
           middle_name, enrollment_begin)
 
 #13. write data
-write.xlsx(psd_data_nsc_only,file = "29aug2025-psd-dimagiba.xlsx") #missing follow updata 2023-2024
+write.csv(psd_data_nsc_only,file = "15sept2025-mann-psd-dimagiba.csv") #missing follow updata 2023-2024
 
 #create missing list for class of 2014-2022
 #merge master list  with nsc records to find missing students, didnt save code from nov2021.
