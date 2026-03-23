@@ -20,12 +20,18 @@ This README contains the codes and instructions to clean the UCLA Community Scho
     -   This dataset creates a missing dataframe that shows student who are missing data from the missing data pull. (Nov, Apr, Aug)
     -   Page 7 of Documentation -
         -   In the event a student has missing data for three consecutive academic years the UCLA Researcher will follow up for the following year. After three consecutive academic years of missing data the student will be determined as inactive and no longer will be followed up with. If the student reappears in the NSC StudentTracker Report, active tracking will resume. 
+
         -   Remove them from the missing list. Mark them as "STOP Track" in the Year
+
             -   E.g. If student has been missing for 3 years in the database, then write "Stop track" in notes section. Eg. 24-25, Will say "2025 Stop Track" for that student.
+
         -   Remove any students who have a record saying they've graduated (we tracked for 8 years)
+
         -   Only making a missing list after the Nov pull
-        -   Depending on the Year
-            -   
+
+        -   
+
+            ## Depending on the Year
     -   Missing a student has been missing the record
 3.  Create a school facing missing list
     1.  We only do data collection 2 a year. One only do this in the Nov pull.
