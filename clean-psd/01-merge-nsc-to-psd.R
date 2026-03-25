@@ -2,8 +2,8 @@
 ##
 ## [ PROJ ] < College Data Project >
 ## [ FILE ] < 01-merge-nsc-to-psd.R >
-## [ AUTH ] < Jeffrey Yo / yjeffrey77, Ariana Dimagiba / aridimagiba >
-## [ INIT ] < 4/30/2022, updated 03/25/2026 >
+## [ AUTH ] < Jeffrey Yo / yjeffrey77 >
+## [ INIT ] < 4/30/2022, updated 11/13/2025 >
 ##
 ################################################################################
 
@@ -36,11 +36,12 @@ data_file_dir<-file.path("..","..")
 #functions to clean and create the NSC data with the existing PSD data.
 
 #use "source" function to run the script: 
-source(file.path(".","psd_rfk_function_list.R"))
+source(file.path(".","clean-psd","psd_rfk_function_list.R"))
 
 ## -----------------------------------------------------------------------------
 ## load all raw data sets
 ## -----------------------------------------------------------------------------
+<<<<<<< HEAD
 nsc_detail_report <-read_csv(file.path("..", nsc_data_file_name)) 
 #load new nsc student detail csv file 
 master_stu_list<- read_excel(file.path("..", master_data_file_name)) 
@@ -48,6 +49,11 @@ master_stu_list<- read_excel(file.path("..", master_data_file_name))
 previous_psd <- read_csv(file.path("..", psd_data_file_name)) 
 #load most recent psd file
 
+=======
+nsc_detail_report <-read_csv(file.path(".","clean-psd", "10102683hsst_10102683-198894-DETAIL-EFFDT-20250821-RUNDT-20250822.csv"))
+master_stu_list<- read_excel(file.path(".","clean-psd", "mann_master_student_list_21-24.xlsx")) 
+previous_psd <- read_csv(file.path(".","clean-psd", "09sept-2025-mann-psd-dimagiba.csv"))
+>>>>>>> a0a0b9c9e03d3fc88fa7f96dfb8f8094f088cdcc
 ## -----------------------------------------------------------------------------
 ##  Part 1 clean nsc data set
 ## -----------------------------------------------------------------------------
@@ -101,8 +107,12 @@ system_types<- nsc_data %>% group_by(system_type) %>% summarize(num_names=n())
 ## -----------------------------------------------------------------------------
 ## Part 2 - clean master student list
 ## -----------------------------------------------------------------------------
+<<<<<<< HEAD
 
 master_stu_list <- master_file(master_stu_list)
+=======
+master_stu_list <- read_excel(file.path(".","clean-psd", "mann_master_student_list_21-24.xlsx"))
+>>>>>>> a0a0b9c9e03d3fc88fa7f96dfb8f8094f088cdcc
 names(master_stu_list)
 
 # REQUIRED VALIDATION:
@@ -137,7 +147,7 @@ names(nsc_data)
 nsc_data_anti <- nsc_data %>%
   anti_join(master_stu_list, by = "student_id") #assess join
 names(nsc_data_anti)
-nsc_data_anti %>% select(last_name,first_name) %>% count(student_id)
+nsc_data_anti %>% select(last_name,first_name,student_id) %>% count(student_id)
 nsc_data_anti <- nsc_data_anti %>% filter(record_found == "N")
 rm(nsc_data_anti)#nsc_data_antit #remove data frames
 
@@ -145,8 +155,15 @@ rm(nsc_data_anti)#nsc_data_antit #remove data frames
 ## Part 4 - Select and bind new NSC file records with most recent PSD
 ## -----------------------------------------------------------------------------
 
+<<<<<<< HEAD
 # 8.Count how many NEW NSC enrollment and graduation records to merge into PSD by date
 ## CODE THAT ALWAYS CHANGES WHEN UPDATING ----
+=======
+##CODE THAT ALWAYS CHANGES WHEN UPDATING
+nsc_enrollment_data<- nsc_data %>% filter(between(enrollment_begin, as.Date('2025-02-01'), as.Date('2025-12-02')))  #filters enrollment records by date
+nsc_grads_data<-nsc_data %>%filter(between(coll_grad_date,as.Date('2024-06-01'), as.Date('2025-12-02'))) #filters graduation records by date
+##
+>>>>>>> a0a0b9c9e03d3fc88fa7f96dfb8f8094f088cdcc
 
 # Check how many NEW college enrollment records
 nsc_data %>% 
@@ -246,14 +263,111 @@ names(psd_data)
 names(nsc_enrollment_data)
 names(nsc_grads_data)
 
-psd_data_nsc_only <- bind_rows(psd_data, nsc_enrollment_data, nsc_grads_data)
+#temporary bypass high school code in psd_data set
+nsc_enrollment_data$high_school_code <- as.numeric(nsc_enrollment_data$high_school_code)
+nsc_grads_data$high_school_code <- as.numeric(nsc_grads_data$high_school_code)
+
+#bypasses no new observations
+#if (nrow(nsc_grads_data) == 0) {psd_data_nsc_only <- bind_rows(psd_data, nsc_enrollment_data)} else {psd_data_nsc_only <-bind_rows(psd_data, nsc_enrollment_data,nsc_grads_data)}
+
+psd_data_nsc_only <- psd_data 
+if (nrow(nsc_enrollment_data) > 0) {psd_data_nsc_only <- bind_rows(psd_data_nsc_only, nsc_enrollment_data)}
+if (nrow(nsc_grads_data) > 0) {psd_data_nsc_only <- bind_rows(psd_data_nsc_only, nsc_grads_data)}
+
+#psd_data_nsc_only <- bind_rows(psd_data, nsc_enrollment_data, nsc_grads_data) # commented out for now, go back later
 
 #12. Sort by consistency and readbility ----
 psd_data_nsc_only <- psd_data_nsc_only %>%
   arrange(hs_grad_date,last_name, first_name, middle_name, enrollment_begin)
 
+<<<<<<< HEAD
 #13. Write new psd csv file ----
 write.csv(psd_data_nsc_only,file = "new-psd-file.csv") 
+=======
+#13. write data
+write.csv(psd_data_nsc_only,file = "02dec2025-mann-psd-castrogomez.csv") #missing follow updata 2023-2024
+
+#create missing list for class of 2014-2022
+#merge master list  with nsc records to find missing students, didnt save code from nov2021.
+
+## -----------------------------------------------------------------------------
+## Part 3 - Create missing Dataframe
+## -----------------------------------------------------------------------------
+missing_master <- read_excel(file.path(".","clean-psd", "mann_master_student_list_21-24.xlsx")) %>%
+  filter(hs_diploma == "REGULAR DIPLOMA" , hs_grad_year %in% c(2017:2025))
+
+#check for students who completed a 4-year degree. students with an AA or certificate may transfer
+completed_fouryear <- psd_2025 %>% filter(he_graduated == "Y", cc_4year == "4-year", hs_grad_year %in% c(2017:2024)) %>%
+  filter(degree_title != "NA") %>%
+  select(student_id,coll_grad_date,degree_title,major,he_graduated,status_source)
+
+
+
+missing_fall<- select(fall_nsc, student_id,college_name)
+missing_fall<- right_join(missing_fall, missing_master, by = "student_id") %>%
+  filter(is.na(college_name))
+
+names(missing_fall)
+names(completed_fouryear)
+
+missing_psd<-left_join(missing_fall, completed_fouryear, by = "student_id") %>%
+  filter(is.na(degree_title))
+
+write.xlsx(missing_psd,
+           file = "missing_april2025_dimagiba.xlsx")
+
+#read "psd_missing_nov2021.xlsx" to have a basic structure in adding in the 
+#missing dataframe
+
+psd_missing <- psd_missing_func("psd_dimagiba_march2025.xlsx")
+
+#write out missing df as an excel file
+write.xlsx(psd_missing,
+           file = "psd_missing_april2025_dimagiba.xlsx") #has only nsc data from may2022
+
+## -----------------------------------------------------------------------------
+## Part 4 - Manually add missing cases
+## -----------------------------------------------------------------------------
+
+#From here manually add the data from the 
+#"UCLACS Fall 2021 College Enrollments and Follow Up Data" excel sheet
+#using excel
+
+## -----------------------------------------------------------------------------
+## Part 5 - Manually add missing cases
+## -----------------------------------------------------------------------------
+
+#read in the updated missing dataframe
+psd_missing_updated <- read_excel("mergelist20232024.xlsx")
+
+#check to see if they the column names match
+names(psd_2025) #jeffrey I added the most up to date psd file name here for you
+names(psd_missing_updated) #change df to file where you're keeping the missing student data to merge with psd
+
+#add missing students data from missing data list----
+final_psd <- rbind(psd_2025, psd_missing_updated)
+
+#12. sort by graduate date, last name, first name, middle name, enrollment date
+final_psd <- final_psd %>%
+  arrange(hs_grad_date,last_name, first_name,middle_name, enrollment_begin)
+
+write.xlsx(final_psd, "psd_dimagiba_march2025.xlsx")
+
+## -----------------------------------------------------------------------------
+## Part 6 - Other Code
+## -----------------------------------------------------------------------------
+
+###trouble shooting for ariana
+# ** since there are duplicates in psd_jan2022 file reload psd_jan2022_nsc_only----
+psd_jan2022_nsc_only <- read_excel("psd_dimagiba_jan2022_nsc.xlsx")
+
+
+#add postsecondary plans for class of 2019-2021 to psd
+getwd()
+
+
+
+>>>>>>> a0a0b9c9e03d3fc88fa7f96dfb8f8094f088cdcc
 
 # NAMING CONVENTION:
 # - Rename output file using:
