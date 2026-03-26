@@ -259,7 +259,7 @@ master_file<-function(data_path_master){
 #function merge_nsc_master merges nsc data with masterlist
 merge_nsc_master<-function(nsc_data, master_data){
   # psd with student demos----
-  merge_data<- inner_join(nsc_data, master_data,  by = "student_id") %>%
+  merge_data<- inner_join(nsc_data, master_data,  by = "psd_id") %>%
   #relocate(psd_id, .before = "first_name" )
   return(merge_data)
 }
