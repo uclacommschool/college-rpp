@@ -33,7 +33,7 @@ data_file_dir<-file.path("..","..")
 ## -----------------------------------------------------------------------------
 
 ## -----------------------------------------------------------------------------
-## Part 1 - Create Missing List Dataframe
+## Part 1.1 - Create Missing List Dataframe
 ## -----------------------------------------------------------------------------
 
 #1 Use the clean "nsc_data" df from "01-merge" script to confirm range of cohorts 
@@ -67,11 +67,26 @@ nsc_data %>%
   count(psd_id) %>%
   filter(n > 1)
 
-#3 Filter students who have graduated from a 4-year college
-completed_4yr_college 
+## -----------------------------------------------------------------------------
+## Part 1.2 - Filter students who not active tracking
+## -----------------------------------------------------------------------------
+# GUIDANCE 
+# - Students who have completed a 4-year degree
+# - Students who we already identfied as Inactive or "stop-track"
+# - Students who are newly inactive with missing data for three consecutive years
 
-#2 Identify students who we should should be stop tracking
-#3 
+#3 Flag students who have graduated from a 4-year college 
+missing_df <- missing_df %>%
+  mutate(
+    flag_4yr_grad = he_graduated == "Y" & `2yr_4yr` == "4-year"
+  )
+  
+#4 Flag students who have been missing for 3 consecutive years
+
+
+#5 
+
+
 
 missing_fall<- select(fall_nsc, student_id,college_name)
 missing_fall<- right_join(missing_fall, missing_master, by = "student_id") %>%
