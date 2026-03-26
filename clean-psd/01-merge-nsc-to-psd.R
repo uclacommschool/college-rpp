@@ -36,17 +36,15 @@ data_file_dir<-file.path("..","..")
 #functions to clean and create the NSC data with the existing PSD data.
 
 #use "source" function to run the script: 
-source(file.path(".","clean-psd","psd_rfk_function_list.R"))
+source(file.path(".","psd_rfk_function_list.R"))
 
 ## -----------------------------------------------------------------------------
 ## load all raw data sets
 ## -----------------------------------------------------------------------------
-nsc_detail_report <-read_csv(file.path("..", nsc_data_file_name)) 
 #load new nsc student detail csv file 
-master_stu_list<- read_excel(file.path("..", master_data_file_name)) 
 #load master student directory file
-previous_psd <- read_csv(file.path("..", psd_data_file_name)) 
 #load most recent psd file
+
 ## -----------------------------------------------------------------------------
 ##  Part 1 clean nsc data set
 ## -----------------------------------------------------------------------------
@@ -61,59 +59,66 @@ names(nsc_data)
 nsc_data <- stu_id_nsc_data(nsc_data)
 
 #3.Check college name duplicates and edit duplicates ----
-college_names<- nsc_data %>% group_by(college_name) %>% summarize(num_names=n()) 
+college_names <- nsc_data %>% 
+  group_by(college_name) %>% 
+  summarize(num_names = n(), .groups = "drop") %>%
+  arrange(desc(num_names))
 
+print(college_names) 
+
+#4a. Standardize selected college names using college_code
 nsc_data<- nsc_data %>%
-  mutate(college_name2 = case_when
-         (college_code == "001149-00" ~ 
-             "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, HUMBOLDT",
-           college_code == "001143-00" ~ 
-             "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, SAN LUIS OBISPO",
-           college_code == "001144-00"~ 
-             "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, POMONA",
-           TRUE ~ as.character(college_name))) %>%
-  select(student_id,  first_name, middle_name, last_name, name_suffix, 
-         req_return_field, record_found, high_school_code, hs_grad_date, 
-         college_code, college_name2, college_state, cc_4year, public_private,
-         enrollment_begin, enrollment_end, enrollment_status, he_graduated, 
-         coll_grad_date, degree_title, major, college_sequence,
-         program_code) %>% 
-  rename(college_name = 'college_name2')
+  mutate(college_name2 = case_when(
+    college_code == "001149-00" ~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, HUMBOLDT",
+    college_code == "001143-00" ~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, SAN LUIS OBISPO",
+    college_code == "001144-00" ~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, POMONA",
+    TRUE ~ as.character(college_name)
+           )
+         ) %>%
+   select(
+    student_id,  first_name, middle_name, last_name, name_suffix, 
+    req_return_field, record_found, high_school_code, hs_grad_date, 
+    college_code, college_name2, college_state, cc_4year, public_private,
+    enrollment_begin, enrollment_end, enrollment_status, he_graduated, 
+    coll_grad_date, degree_title, major, college_sequence,program_code
+    ) %>% 
+  rename(college_name = college_name2)
 
 nsc_data %>% 
   group_by(college_name) %>% 
   summarize(num_names=n()) %>% 
   print( n = 93)  #check for new colleges
 
-#count only nsc enrollment records not graduation or missing records
+#4b. Count only nsc enrollment records not graduation or missing records
 str_view(string =nsc_data$enrollment_begin, pattern = '^\\d{4}') #record_year
 str_view(string =nsc_data$enrollment_begin,
          pattern = '^(\\d{4})(\\d\\d)(\\d\\d)') #record term
 
-#5. run psd_var_nsc function
+#5a. Run psd_var_nsc function
 nsc_data <- psd_var_nsc(nsc_data)
 names(nsc_data)
 
-#5. check system type 
-system_types<- nsc_data %>% group_by(system_type) %>% summarize(num_names=n())  
+#5b.Check system type 
+system_types <- nsc_data %>% 
+  group_by(college_name) %>% 
+  summarize(num_names = n(), .groups = "drop") %>%
+  arrange(desc(num_names))
 
+print(system_types)
 ## -----------------------------------------------------------------------------
-## Part 2 - clean master student list
+## Part 2 - check master student list
 ## -----------------------------------------------------------------------------
 
-master_stu_list <- master_file(master_stu_list)
-names(master_stu_list)
-
-# REQUIRED VALIDATION:
+#REQUIRED VALIDATION:
 # - Confirm that the most recent graduating class is included in the mas_stu_list.
 # - This step is REQUIRED before proceeding.
 
-#Check avaiable graduation years in the dataset
-unique(master_stu_list$hs_grad_date)
+#1 Check available graduation years in the dataset
+unique(master_stu_list$hs_grad_year)
 
 # OPTIONAL: count students by graduating class
 master_stu_list %>%
-  count(hs_grad_date)
+  count(hs_grad_year)
 
 # GUIDANCE:
 # - Verify that the expected most recent class year (e.g., current senior cohort) appears
@@ -132,6 +137,7 @@ names(nsc_data)
 
 #7. Check merge 
 names(nsc_data)
+
 #create object of obs that didn't merge
 nsc_data_anti <- nsc_data %>%
   anti_join(master_stu_list, by = "student_id") #assess join
