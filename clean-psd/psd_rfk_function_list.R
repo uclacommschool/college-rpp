@@ -249,8 +249,7 @@ psd_var_nsc<-function(nsc_data){
 
 #function master_file loads masterlist
 master_file<-function(data_path_master){
-  masterlist<- read_excel(file.path(data_path_master))
-  master_stu_list <- select(masterlist, student_id, gender, race_ethnicity,
+  master_stu_list <- select(data_path_master, student_id, gender, race_ethnicity,
                             poverty_indicator, hs_diploma, notes, psd_id,)
   #relocate(psd_id, .before = "first_name" )
   return(master_stu_list)
@@ -266,13 +265,12 @@ merge_nsc_master<-function(nsc_data, master_data){
 
 #function psd_data_clean loads and cleans most recent psd from previous session
 psd_data_clean<-function(psd_data){
-  #psd_data <- read_excel(file.path(psd_file_path))
   psd_data <- data.frame(psd_data)
   # **change strings to dates ----
   test <- psd_data %>% mutate(enrollment_begin_date = mdy(enrollment_begin), 
-                              enrollment_end_date = mdy(enrollment_end),
-                              coll_grad_date_date = mdy(coll_grad_date),
-                              hs_grad_date_date = mdy(hs_grad_date)) 
+                                 enrollment_end_date = mdy(enrollment_end),
+                                 coll_grad_date_date = mdy(coll_grad_date),
+                                 hs_grad_date_date = mdy(hs_grad_date))
   attributes(test$enrollment_begin_date)
   test <- test %>% select("student_id","first_name","middle_name","last_name","name_suffix",      
                           "record_found","req_return_field" , "high_school_code","hs_grad_date_date", "college_code" ,    
@@ -286,7 +284,31 @@ psd_data_clean<-function(psd_data){
                               enrollment_begin = 'enrollment_begin_date',
                               enrollment_end = 'enrollment_end_date',
                               coll_grad_date = 'coll_grad_date_date')
-  return(psd_data)
+  
+  psd_data <- psd_data %>% mutate(high_school_code = as.character(high_school_code),
+                                  hs_grad_year = as.character(hs_grad_year))
+
+
+    return(psd_data)
+}
+
+#function to check for new colleges and need to assign system type
+check_system_type <- function(df) {
+  
+  missing_system <- df %>%
+    dplyr::filter(!is.na(college_name) & is.na(system_type))
+  
+  if (nrow(missing_system) > 0) {
+    message("system_type check failed.")
+    print(
+      missing_system %>%
+        dplyr::count(college_name, sort = TRUE)
+    )
+    stop("Fix system_type assignment before proceeding.")
+  }
+  
+  message("system_type check passed.")
+  return(df)
 }
 
 ## -----------------------------------------------------------------------------

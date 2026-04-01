@@ -1,0 +1,24 @@
+# -------------------------------
+# PSD / College RPP Commit Template
+# -------------------------------
+
+# TYPE: feat | fix | refactor | data | docs | chore
+# STEP: 01-merge | 02-missing | 03-clean | 04-merge | other
+
+<type>: (<step>) <short summary>
+
+# Why is this change needed?
+# (bug fix, new feature, data update, etc.)
+
+# What changed?
+# - bullet points of key changes
+
+# Data impact (if applicable):
+# - affects cohorts? flags? outputs?
+
+# Notes / follow-ups:
+# - anything to revisit later
+
+# -------------------------------
+# Remove comments before committing
+# -------------------------------
