@@ -292,24 +292,6 @@ psd_data_clean<-function(psd_data){
     return(psd_data)
 }
 
-#function to check for new colleges and need to assign system type
-check_system_type <- function(df) {
-  
-  missing_system <- df %>%
-    dplyr::filter(!is.na(college_name) & is.na(system_type))
-  
-  if (nrow(missing_system) > 0) {
-    message("system_type check failed.")
-    print(
-      missing_system %>%
-        dplyr::count(college_name, sort = TRUE)
-    )
-    stop("Fix system_type assignment before proceeding.")
-  }
-  
-  message("system_type check passed.")
-  return(df)
-}
 
 ## -----------------------------------------------------------------------------
 ## Part 3 - Create missing Dataframe function
