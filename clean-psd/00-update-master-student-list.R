@@ -84,11 +84,11 @@ names(master_stu_list)
 
 identical(names(master_stu_list), names(clean_grad))
 
-#if identicial returns FALSE identifiy mismatches
+#if identical returns FALSE identify mismatches
 setdiff(names(master_stu_list), names(clean_grad))
 setdiff(names(clean_grad), names(master_stu_list))
 
-#4 Bind new cohort list to new master studnet lists
+#4 Bind new cohort list to new master student lists
 new_master_student <- bind_rows(master_stu_list, clean_grad) %>%
   distinct()
 
@@ -104,4 +104,4 @@ write.csv(
 # - Rename output file using:
 #   "master-student-list-schoolsitename-yearrange.csv"
 # - Example:
-#   "master-stduent-list-rfk-2012-2025.csv"
+#   "master-student-list-rfk-2012-2025.csv"
