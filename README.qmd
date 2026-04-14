@@ -7,3 +7,5 @@ editor: visual
 ## Overview
 
 Hello!
+
+We love UCLA Community School.
