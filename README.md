@@ -6,3 +6,5 @@
 Hello!
 
 We love UCLA Community School.
+
+Thank you for your help!
