@@ -56,7 +56,7 @@ previous_psd <- read_csv(file.path("..", "5sept2025-psd-yo.csv"))
 #1a. manipulating nsc data clean_names_nsc_data function
 nsc_data <-clean_names_nsc_data(nsc_detail_report)
 
-#1b. check
+#1b. check the nsc_data data frame (df) renames columns
 names(nsc_data)
 
 #2. get stu id mutate (stu_id_nsc_data function)
@@ -97,15 +97,20 @@ str_view(string =nsc_data$enrollment_begin, pattern = '^\\d{4}') #record_year
 str_view(string =nsc_data$enrollment_begin,
          pattern = '^(\\d{4})(\\d\\d)(\\d\\d)') #record term
 
-#5a. Run psd_var_nsc function
+#5a. Run psd_var_nsc function to create psd specific variables (i.e. system type
+# record term, record year)
 nsc_data <- psd_var_nsc(nsc_data)
 names(nsc_data)
 
-#5b.Check system type if new school that hasn't assigned a system_type
+#5b.Check system type if new school that hasn't been assigned a system_type
 system_types <- nsc_data %>% 
   group_by(system_type) %>% 
   summarize(num_names = n(), .groups = "drop") %>%
   print(n=100)  
+
+##GUIDANCE
+# - If there new colleges go back to edit psd_var_nsc function in psd_function_list.R to assign system type
+# - Refer to PSD documentation to decide assigning system type
 
 ## -----------------------------------------------------------------------------
 ## Part 2 - clean master student list
@@ -124,8 +129,9 @@ master_stu_list %>%
   count(hs_grad_year)
 
 #2. Prepare master list to merge with NSC data
-master_stu_df <- master_stu_list %>%
-  select(student_id, gender, race_ethnicity, poverty_indicator,hs_diploma,psd_id)
+master_stu_df <- master_stu_list %>% mutate(
+  notes = as.character(notes)) %>% select(
+  student_id, gender, race_ethnicity, poverty_indicator,hs_diploma,psd_id,notes)
 
 # GUIDANCE:
 # - Verify that the expected most recent class year (e.g., current senior cohort) appears
@@ -135,7 +141,7 @@ master_stu_df <- master_stu_list %>%
 # - Do NOT proceed until the most recent class is present.
 
 ## -----------------------------------------------------------------------------
-## Part 3 - merge clean nsc data with master student list
+## Part 3 - Merge clean nsc data with clean master student list
 ## -----------------------------------------------------------------------------
 
 #1. Merge nsc data with masterlist using merge_nsc_master function
@@ -152,32 +158,58 @@ nsc_data_anti %>% select(last_name,first_name,student_id) %>% count(student_id)
 nsc_data_anti <- nsc_data_anti %>% filter(record_found == "N")
 rm(nsc_data_anti)#nsc_data_antit #remove data frames
 
+#3a Assign class types to all variables
+nsc_data<- assign_class_psd(nsc_data)
+
+#3b Parse dates to date variables 
+nsc_data<- parse_dates_psd(nsc_data)
+
 ## -----------------------------------------------------------------------------
-## Part 4 - Select and bind new NSC file records with most recent PSD
+## Part 4 - Clean previous psd
 ## -----------------------------------------------------------------------------
 
-#1. Count how many NEW NSC enrollment and graduation records to merge into PSD by date
+#1. Load and cleans most recent psd from previous session 
+psd_data<-psd_data_clean(previous_psd)  
+names(psd_data)
 
-##CODE THAT ALWAYS CHANGES WHEN UPDATING
-nsc_enrollment_data<- nsc_data %>% filter(between(enrollment_begin, as.Date('2025-07-08'), as.Date('2025-10-27')))  #filters enrollment records by date
-nsc_grads_data<-nsc_data %>%filter(between(coll_grad_date,as.Date('2024-06-18'), as.Date('2025-12-02'))) #filters graduation records by date
+#2a Assigns class types to specific variables except dates 
+psd_data <- assign_class_psd(psd_data)
+
+#2b Parse dates to date variables
+psd_data<- parse_dates_psd(nsc_data)
 
 ## -----------------------------------------------------------------------------
 ## Part 5 - Select and bind new NSC file records with most recent PSD
 ## -----------------------------------------------------------------------------
 
-#1. Load and cleans most recent psd from previous session ----
-psd_data<-psd_data_clean(previous_psd)  
-names(psd_data)
 
-#psd_data <-left_join(psd_data, psd_ids, by = "student_id") 
-#In January 2024 created psd specific id to differentiate 
+##CODE THAT ALWAYS CHANGES WHEN UPDATING
+nsc_enrollment_data<- nsc_data %>% filter(between(enrollment_begin, as.Date('2025-07-08'), as.Date('2025-10-27')))  #filters enrollment records by date
 
-#2. Confirm all dataframes have the same 34 columns
+# GUIDANCE:
+# nsc_enrollment_data is a smaller data frame that only contains new college enrollment records
+# - Review latest enrollment_begin date from the previous psd for the first date
+# - Review latest enrollment_begin date from nsc data for the second date
+
+nsc_grads_data<-nsc_data %>%filter(between(coll_grad_date,as.Date('2025-06-18'), as.Date('2025-12-02'))) #filters graduation records by date
+
+# GUIDANCE:
+# nsc_grads_data is a smaller data frame that only contains new graduates data
+# - Review latest coll_grad_date date from the previous psd for the first date
+# - Review latest coll_grad_date from nsc data for the second date
+
+#2a. Confirm all data frames have the same 34 variable columns
 # Compare column names across datasets
 names(psd_data)
 names(nsc_enrollment_data)
 names(nsc_grads_data)
+
+#2b.Check data frames all have the same class types
+check_type(list(nsc_enrollment_data, nsc_grads_data, psd_data),
+     c("nsc_enrollment", "nsc_grads", "psd"))
+
+check_type_mismatch(list(nsc_enrollment_data, nsc_grads_data, psd_data),
+                         c("nsc_enrollment", "nsc_grad", "psd"))
 
 #3. Bind to enrollment and graduation records to most up-to-date PSD ----
 
@@ -187,13 +219,21 @@ psd_data_nsc_only<-bind_rows(
   graduation = nsc_grads_data
 )
 
-psd_data_nsc_only$student_id <- psd_data_nsc_only$student_id[,1]
 
 #4. Sort by consistency and readability ----
 psd_data_nsc_only <- psd_data_nsc_only %>%
   arrange(hs_grad_date,last_name, first_name, middle_name, enrollment_begin)
 
-#5. Write new psd csv file ----
+#5. Format dates for export
+psd_data_nsc_only <- psd_data_nsc_only %>%
+  mutate(
+    enrollment_begin = format(enrollment_begin, "%Y-%m-%d"),
+    enrollment_end = format(enrollment_end, "%Y-%m-%d"),
+    coll_grad_date = format(coll_grad_date, "%Y-%m-%d"),
+    hs_grad_date = format(hs_grad_date, "%Y-%m-%d")
+    ) 
+
+#6. Write new psd csv file ----
 write.csv(psd_data_nsc_only,file = "ddmonthYYYY-schoolsitename-psd-name.csv") 
 
 # NAMING CONVENTION:
