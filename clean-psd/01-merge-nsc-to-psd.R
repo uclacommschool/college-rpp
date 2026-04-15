@@ -209,7 +209,7 @@ check_type(list(nsc_enrollment_data, nsc_grads_data, psd_data),
      c("nsc_enrollment", "nsc_grads", "psd"))
 
 check_type_mismatch(list(nsc_enrollment_data, nsc_grads_data, psd_data),
-                         c("nsc_enrollment", "nsc_grad", "psd"))
+                         c("nsc_enrollment", "nsc_grads", "psd"))
 
 #3. Bind to enrollment and graduation records to most up-to-date PSD ----
 
