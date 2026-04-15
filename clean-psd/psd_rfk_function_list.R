@@ -3,7 +3,7 @@
 ## [ PROJ ] < College Data Project >
 ## [ FILE ] < psd_rfk_function_list.R >
 ## [ AUTH ] < Jeffrey Yo / yjeffrey77 >
-## [ INIT ] < 4/30/2022, updated 02/07/2025 >
+## [ INIT ] < 4/30/2022, updated 04/15/2026 aridimagiba >
 ##
 ################################################################################
 
@@ -47,7 +47,7 @@ clean_names_nsc_data<-function(nsc_data){
 
 stu_id_nsc_data<-function(nsc_data){
   nsc_data <- nsc_data %>% 
-    mutate(student_id = str_match(string = your_unique_identifier,
+    mutate(student_id = str_extract(string = your_unique_identifier,
                                   pattern = "[\\d\\w\\d]+[^[:punct:]]"))
   nsc_data <- select(nsc_data, student_id,  first_name, middle_name, last_name, name_suffix, req_return_field, record_found,
                      high_school_code, hs_grad_date, college_code, college_name, college_state, cc_4year, public_private,
@@ -67,14 +67,16 @@ stu_id_nsc_data<-function(nsc_data){
 #enrollment_status, he_graduated, coll_grad_date,degree_title, major,
 #college_sequence,program_code, status_source, record_year, record_term,
 #system_type,hs_grad_year)
+
+#psd_var_nsc function creates psd specific variables not part of the nsc_data
 psd_var_nsc<-function(nsc_data){
   nsc_data <- nsc_data %>% # *Add psd specific variables----
   mutate(status_source = recode(record_found, "Y" = "NSC")) %>% #status_source
     mutate(hs_grad_year=str_match(string = nsc_data$hs_grad_date, pattern = '^\\d{4}')) %>% #add grad year
     mutate(enrollment_begin_date = ymd(enrollment_begin), # **change strings to dates ----
            enrollment_end_date = ymd(enrollment_end),
-           coll_grad_date_date = ymd(coll_grad_date),
-           hs_grad_date_date = ymd(hs_grad_date)) %>% 
+          coll_grad_date_date = ymd(coll_grad_date),
+          hs_grad_date_date = ymd(hs_grad_date)) %>% 
     mutate(system_type = recode(college_name, "ACADEMY OF ART UNIVERSITY" =	"INP_NP", # ** college_name ---- 
                                 "ALLAN HANCOCK COLLEGE" = "CCC",
                                 "ANTELOPE VALLEY COLLEGE"	= "CCC",
@@ -82,6 +84,7 @@ psd_var_nsc<-function(nsc_data){
                                 "ART CENTER COLLEGE OF DESIGN"	 =	"INP_NP",
                                 "BERKELEY CITY COLLEGE" = "CCC",
                                 "BUTTE COLLEGE"	= "CCC",
+                                "BUCKNELL UNIVERSITY" = "OUT_4YRP", 
                                 "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, SAN LUIS OBISPO"	= "CSU",
                                 "CALIFORNIA STATE UNIV CHANNEL ISLANDS"	= "CSU",
                                 "CALIFORNIA STATE UNIVERSITY - BAKERSFIEL"	= "CSU",
@@ -112,7 +115,9 @@ psd_var_nsc<-function(nsc_data){
                                 "DE ANZA COLLEGE"= "CCC",
                                 "EAST LOS ANGELES COLLEGE"= "CCC",
                                 "EL CAMINO COLLEGE"= "CCC",
+                                "ECPI UNIVERSITY - GREENSBORO" = "OUT_FP",
                                 "FULLERTON COLLEGE" = "CCC",
+                                "FLORIDA POLYTECHNIC UNIVERSITY" = "OUT_4YR",
                                 "GLENDALE COMMUNITY COLLEGE"= "CCC",
                                 "IRVINE VALLEY COLLEGE"= "CCC",
                                 "KALAMAZOO COLLEGE" = "OUT_4YR",
@@ -128,6 +133,8 @@ psd_var_nsc<-function(nsc_data){
                                 "MOUNT ST MARY'S UNIVERSITY" = "INP_NP",
                                 "MOUNT SAN ANTONIO COLLEGE"= "CCC",
                                 "MOUNT ST MARY'S COLLEGE" =	"INP_NP",
+                                "NATIONAL UNIVERSITY" = "INP_NP",
+                                "NIGHTINGALE COLLEGE" = "OUT_FP",
                                 "NORTHERN ARIZONA UNIVERSITY" = "OUT_4YR",
                                 "NORTHWESTERN UNIVERSITY" = "OUT_4YRP",
                                 "ORANGE COAST COLLEGE"= "CCC",
@@ -136,6 +143,7 @@ psd_var_nsc<-function(nsc_data){
                                 "PASADENA CITY COLLEGE"= "CCC",
                                 "POMONA COLLEGE" =	"INP_NP",
                                 "REGENT UNIVERSITY"= "OUT_4YRP",
+                                "RIVERSIDE CITY COLLEGE" = "CCC",
                                 "SACRAMENTO CITY COLLEGE-LOS RIOS CC DIST"= "CCC",
                                 "SAN FRANCISCO STATE UNIVERSITY"	= "CSU",
                                 "SAN JOSE STATE UNIVERSITY"	= "CSU",
@@ -200,7 +208,7 @@ psd_var_nsc<-function(nsc_data){
          program_code,status_source, system_type,hs_grad_year) %>%
     rename(hs_grad_date='hs_grad_date_date', #rename date variables
            enrollment_begin = 'enrollment_begin_date',
-           enrollment_end = 'enrollment_end_date',
+          enrollment_end = 'enrollment_end_date',
            coll_grad_date = 'coll_grad_date_date')
   
   #**record_year ----
@@ -269,24 +277,132 @@ psd_data_clean<-function(psd_data){
   #psd_data <- read_excel(file.path(psd_file_path))
   psd_data <- data.frame(psd_data)
   # **change strings to dates ----
-  test <- psd_data %>% mutate(enrollment_begin_date = mdy(enrollment_begin), 
-                              enrollment_end_date = mdy(enrollment_end),
-                              coll_grad_date_date = mdy(coll_grad_date),
-                              hs_grad_date_date = mdy(hs_grad_date)) 
-  attributes(test$enrollment_begin_date)
-  test <- test %>% select("student_id","first_name","middle_name","last_name","name_suffix",      
-                          "record_found","req_return_field" , "high_school_code","hs_grad_date_date", "college_code" ,    
-                          "college_name","college_state","cc_4year", "public_private","enrollment_begin_date",
-                          "enrollment_end_date","enrollment_status","he_graduated" ,"coll_grad_date_date", "degree_title",     
+  #test <- psd_data %>% mutate(enrollment_begin_date = mdy(enrollment_begin), 
+                             # enrollment_end_date = mdy(enrollment_end),
+                             # coll_grad_date_date = mdy(coll_grad_date),
+                             # hs_grad_date_date = mdy(hs_grad_date)) 
+  #attributes(test$enrollment_begin_date)
+  psd_data <- psd_data %>% select("student_id","first_name","middle_name","last_name","name_suffix",      
+                          "record_found","req_return_field" , "high_school_code","hs_grad_date", "college_code" ,    
+                          "college_name","college_state","cc_4year", "public_private","enrollment_begin",
+                          "enrollment_end","enrollment_status","he_graduated" ,"coll_grad_date", "degree_title",     
                           "major" ,"college_sequence" , "program_code" ,"status_source","record_year" ,"record_term" ,
                           "system_type", "hs_grad_year","gender", "race_ethnicity", 
                           "poverty_indicator" ,"hs_diploma","notes", "psd_id") 
   
-  psd_data <-  test %>%rename(hs_grad_date ='hs_grad_date_date', #rename date variables
-                              enrollment_begin = 'enrollment_begin_date',
-                              enrollment_end = 'enrollment_end_date',
-                              coll_grad_date = 'coll_grad_date_date')
+  #psd_data <-  test %>%rename(hs_grad_date ='hs_grad_date_date', #rename date variables
+                             # enrollment_begin = 'enrollment_begin_date',
+                              #enrollment_end = 'enrollment_end_date',
+                             # coll_grad_date = 'coll_grad_date_date')
   return(psd_data)
+}
+
+
+# parse_dates_psd function
+# Converts PSD date variables to Date class for consistent analysis and merging.
+parse_dates_psd <- function(df, format = c("ymd", "mdy")) {
+  format <- match.arg(format)
+  
+  if (format == "ymd") {
+    df %>%
+      mutate(
+        enrollment_begin = ymd(enrollment_begin),
+        enrollment_end = ymd(enrollment_end),
+        coll_grad_date = ymd(coll_grad_date),
+        hs_grad_date = ymd(hs_grad_date)
+      )
+  } else {
+    df %>%
+      mutate(
+        enrollment_begin = mdy(enrollment_begin),
+        enrollment_end = mdy(enrollment_end),
+        coll_grad_date = mdy(coll_grad_date),
+        hs_grad_date = mdy(hs_grad_date)
+      )
+  }
+}
+
+# assign_class_psd function
+# assign class to non-date PSD variables 
+assign_class_psd <- function(psd_data){
+  psd_data <- psd_data %>% 
+    mutate(
+      student_id = as.character(student_id),
+      first_name = as.character(first_name),
+      middle_name = as.character(middle_name),
+      last_name = as.character(last_name),
+      name_suffix = as.character(name_suffix),
+      record_found = as.character(record_found),
+      req_return_field = as.character(req_return_field),
+      high_school_code = as.character(high_school_code),
+      college_code = as.character(college_code),
+      college_name = as.character(college_name),
+      college_state = as.character(college_state),
+      cc_4year = as.character(cc_4year),
+      public_private = as.character(public_private),
+      enrollment_status = as.character(enrollment_status),
+      he_graduated = as.character(he_graduated),
+      degree_title = as.character(degree_title),
+      major = as.character(major),
+      college_sequence = as.numeric(college_sequence),
+      program_code = as.character(program_code),
+      status_source = as.character(status_source),
+      record_year = as.integer(record_year),
+      record_term = as.character(record_term),
+      system_type = as.character(system_type),
+      hs_grad_year = as.integer(hs_grad_year),
+      gender = as.character(gender),
+      race_ethnicity = as.character(race_ethnicity),
+      poverty_indicator = as.character(poverty_indicator),
+      hs_diploma = as.character(hs_diploma),
+      notes = as.character(notes),
+      psd_id = as.character(psd_id)
+    )
+  
+  return(psd_data)
+}
+
+
+# check class type function
+# check class type in dataframe before binding
+check_type <- function(df_list, df_names = NULL) {
+  
+  # Assign names if not provided
+  if (is.null(df_names)) {
+    df_names <- paste0("df", seq_along(df_list))
+  }
+  
+  # Get all columns across all dfs
+  cols <- Reduce(union, lapply(df_list, names))
+  
+  # Helper function
+  get_class <- function(df, col) {
+    if (col %in% names(df)) {
+      class(df[[col]])[1]
+    } else {
+      NA
+    }
+  }
+  
+  # Build result
+  result <- data.frame(column = cols, stringsAsFactors = FALSE)
+  
+  for (i in seq_along(df_list)) {
+    result[[df_names[i]]] <- sapply(cols, function(x) get_class(df_list[[i]], x))
+  }
+  
+  return(result)
+}
+
+# check_type_mismatch function
+# confirm mismatches if any
+check_type_mismatch <- function(df_list, df_names = NULL) {
+  tbl <- check_type(df_list, df_names)
+  
+  tbl %>%
+    dplyr::filter(
+      apply(tbl[-1], 1, function(x) length(unique(na.omit(x))) > 1)
+    )
 }
 
 ## -----------------------------------------------------------------------------
