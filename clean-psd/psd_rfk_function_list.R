@@ -141,6 +141,8 @@ psd_var_nsc<-function(nsc_data){
                                 "OTIS COLLEGE OF ART AND DESIGN" =	"INP_NP",
                                 "PALOMAR COLLEGE"= "CCC",
                                 "PASADENA CITY COLLEGE"= "CCC",
+                                "PEPPERDINE UNIVERSITY - LAW SCHOOL" = "INP_NP",
+                                "PIMA COMMUNITY COLLEGE" = "OUT_CC",
                                 "POMONA COLLEGE" =	"INP_NP",
                                 "REGENT UNIVERSITY"= "OUT_4YRP",
                                 "RIVERSIDE CITY COLLEGE" = "CCC",
