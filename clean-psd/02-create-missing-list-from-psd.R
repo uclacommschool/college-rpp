@@ -147,6 +147,37 @@ missing_df<-generate_missing_list(current_psd,
                             record_year = 2025,
                             record_term = "fall")
 
+# add the 2025 students (Note this may change based on year)
+grad_class25<-master_stu_list %>% filter(hs_grad_year == 2025)
+current_25_nsc<-current_psd %>% filter(hs_grad_year == 2025)
+missing_25<-grad_class25 %>% filter(!c(psd_id %in% current_25_nsc$psd_id)) %>% 
+  filter(!is.na(psd_id))
+
+# Add all missing columns as NA, then reorder to match missing_df
+missing_25_prepped <- missing_25 %>%
+  # Add missing columns as NA first
+  mutate(!!!setNames(
+    lapply(setdiff(colnames(missing_df), colnames(missing_25)), function(x) NA_character_),
+    setdiff(colnames(missing_df), colnames(missing_25))
+  )) %>%
+  select(all_of(colnames(missing_df))) %>%
+  # Cast each column to match missing_df's class
+  mutate(across(
+    everything(),
+    ~ class(missing_df[[cur_column()]])[1] %>%
+      switch(
+        "numeric"   = as.numeric(.),
+        "integer"   = as.integer(.),
+        "logical"   = as.logical(.),
+        "Date"      = as.Date(.),
+        "POSIXct"   = as.POSIXct(.),
+        as.character(.)  # default: character
+      )
+  ))
+
+#add 2025 missing students together
+missing_df <- bind_rows(missing_df, missing_25_prepped)
+
 #Flag students who have graduated from a 4-year college 
 missing_df <- missing_df %>%
   mutate(
@@ -155,6 +186,7 @@ missing_df <- missing_df %>%
       TRUE ~ 0
   ))
 
+#check
 test<-missing_df %>% filter(hs_grad_year>2016)
 
 #3 Filter  students who have graduated from a 4-year college
@@ -198,10 +230,10 @@ flag_stopped_tracking <- function(df, indicator_name = "stopped_tracking") {
 #Flag stop tracking users
 missing_df<-flag_stopped_tracking(missing_df)
 
-#filter stop tracking users
+#filter out stop tracking users
 missing_df<-missing_df %>% filter(stopped_tracking == 0)
 
-#5.Flag new students who have been missing for 3 consecutive years as stop-track
+#5a.Flag new students who have been missing for 3 consecutive years as stop-track
 
 # ─────────────────────────────────────────────────────────────────────────────
 # flag_new_stop_track()
