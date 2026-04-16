@@ -24,9 +24,11 @@ library(janitor)
 ## directory paths
 ## ---------------------------
 
-code_file_dir<-file.path(".")
+code_file_dir<-file.path(".", "clean-psd")
 
 data_file_dir<-file.path("..","..")
+
+box_file_dir<-file.path("C:/Users/jyo/Box","College Data")
 
 ## -----------------------------------------------------------------------------
 ## helper functions
@@ -36,18 +38,30 @@ data_file_dir<-file.path("..","..")
 #functions to clean and create the NSC data with the existing PSD data.
 
 #use "source" function to run the script: 
-source(file.path(".","psd_rfk_function_list.R"))
+source(file.path(code_file_dir,"psd_rfk_function_list.R"))
 
 ## -----------------------------------------------------------------------------
 ## load all raw data sets
 ## -----------------------------------------------------------------------------
 
 #load new nsc student detail csv file
-nsc_detail_report <-read_csv(file.path("..", "10042443_10042443-205673-DETAIL-EFFDT-20251120-RUNDT-20251203.csv"))
+nsc_detail_report <-read_csv(file.path(box_file_dir,
+                                       "National Student Clearinghouse",
+                                       "UCLACS StudentTracker Reports",
+                                       "2025 December",
+                                       "10042443_10042443-205673-DETAIL-EFFDT-20251120-RUNDT-20251203.csv"))
+
 #load master student directory file
-master_stu_list<- read_csv(file.path("..", "master-student-list-rfk-2012-2025.csv")) 
+master_stu_list<- read_csv(file.path(code_file_dir,
+                                     "master-student-list-rfk-2012-2025.csv")) 
+
+#NOTE: Need to update directory to a box folder.
+
 #load most recent psd file
-previous_psd <- read_csv(file.path("..", "5sept2025-psd-yo.csv"))
+previous_psd <- read_csv(file.path(box_file_dir,
+                                   "Postsecondary Database",
+                                   "UCLA Community School PSD",
+                                   "5sept2025-psd-yo.csv"))
 
 ## -----------------------------------------------------------------------------
 ##  Part 1 clean nsc data set
@@ -176,7 +190,7 @@ names(psd_data)
 psd_data <- assign_class_psd(psd_data)
 
 #2b Parse dates to date variables
-psd_data<- parse_dates_psd(nsc_data)
+psd_data<- parse_dates_psd(psd_data)
 
 ## -----------------------------------------------------------------------------
 ## Part 5 - Select and bind new NSC file records with most recent PSD
@@ -234,7 +248,12 @@ psd_data_nsc_only <- psd_data_nsc_only %>%
     ) 
 
 #6. Write new psd csv file ----
-write.csv(psd_data_nsc_only,file = "ddmonthYYYY-schoolsitename-psd-name.csv") 
+
+#write.csv(psd_data_nsc_only,file = "ddmonthYYYY-schoolsitename-psd-name.csv") 
+
+write.csv(psd_data_nsc_only,
+          file = file.path(code_file_dir,
+            "16april2026-rfk-psd-yo-test.csv")) 
 
 # NAMING CONVENTION:
 # - Rename output file using:
