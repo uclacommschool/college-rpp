@@ -1,6 +1,32 @@
-.Rproj.user
-.Rhistory
+# Student data files — never commit
+*psd*.csv
+*master-student*.csv
+*nscgradfile*.txt
+uclacs_*.xlsx
+*-psd-*.csv
+*_psd.csv
+*DETAIL-EFFDT*.csv
+
+# Personal directory paths
+*directory-path*.R
+*directories*.R
+*draft*.R
+
+# R/Mac system files
+.DS_Store
+.Rapp.history
 .RData
-.Ruserdata
-_other/
+.Rhistory
+*.Rproj
+.Rproj.user/
+
+# Test and output files
+clean-psd/test.csv
+clean-psd/type_mismatch_check.csv
+clean-psd/type_table_check.csv
+clean-psd/ddmonthYYYY-schoolsitename-psd-name.csv
+clean-psd/.DS_Store
+clean-psd/.RData
+clean-psd/.Rhistory
+clean-psd/.Rproj.user/
 
