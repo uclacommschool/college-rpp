@@ -3,7 +3,7 @@
 ## [ PROJ ] < College Data Project >
 ## [ FILE ] < 01-merge-nsc-to-psd.R >
 ## [ AUTH ] < Jeffrey Yo / yjeffrey77, Ariana Dimagiba / aridimagiba >
-## [ INIT ] < 4/30/2022, updated 04/14/2026 >
+## [ INIT ] < 4/30/2022, updated 05/18/2026 by aridimagiba >
 ##
 ################################################################################
 
@@ -13,12 +13,17 @@
 library(readr)
 library(readxl)
 library(lubridate)
-library(haven)
-library(labelled)
 library(dplyr)
 library(stringr)
 library(openxlsx)
 library(janitor)
+
+## ---------------------------
+## set working directory
+## ---------------------------
+
+# sets working directory to the folder the script is saved in
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 ## ---------------------------
 ## directory paths
@@ -26,67 +31,112 @@ library(janitor)
 
 code_file_dir<-file.path(".", "clean-psd")
 
-data_file_dir<-file.path("..","..")
-
-box_file_dir<-file.path("C:/Users/jyo/Box","College Data")
+# Detect OS and set Box path accordingly
+if (.Platform$OS.type == "windows") {
+  box_file_dir <- file.path(Sys.getenv("USERPROFILE"), "Box")
+} else {
+  # Box Drive syncs via CloudStorage on Mac
+  box_file_dir <- file.path(Sys.getenv("HOME"), "Library", "CloudStorage", "Box-Box")
+}
 
 ## -----------------------------------------------------------------------------
-## helper functions
+## load psd helper functions
 ## -----------------------------------------------------------------------------
 
 #run the psd_rfk_function_list.R script, which contains all the helper 
 #functions to clean and create the NSC data with the existing PSD data.
 
 #use "source" function to run the script: 
-source(file.path(code_file_dir,"psd_rfk_function_list.R"))
+source(file.path("psd_rfk_function_list.R"))
+
+## -----------------------------------------------------------------------------
+## UPDATE EACH RUN - checklist
+## -----------------------------------------------------------------------------
+
+# 1. nsc_detail_report  — update folder name (e.g. "2025 December") and file name
+# 2. master_stu_list    — update file name to most recent master student list
+# 3. previous_psd       — update file name to most recent PSD output
+# 4. Part 5             — update enrollment_begin and coll_grad_date date filters
+# 5. Part 5             — update output file name (naming convention below)
+# Run in order: Parts 1 → 2 → 3 → 4 → 5
+
 
 ## -----------------------------------------------------------------------------
 ## load all raw data sets
 ## -----------------------------------------------------------------------------
 
+# load institution lookup reference table
+institution_lookup <- read_csv(file.path(box_file_dir,
+                                         "College Data",
+                                         "Postsecondary Database",
+                                         "institution_lookup.csv"))
+if (nrow(institution_lookup) == 0) {
+  stop("⚠️ institution_lookup.csv loaded but is empty — check file path and contents")
+}
+
 #load new nsc student detail csv file
 nsc_detail_report <-read_csv(file.path(box_file_dir,
+                                       "College Data",
                                        "National Student Clearinghouse",
+                                       #⚠️ UPDATE: change to school site
                                        "UCLACS StudentTracker Reports",
+                                       #⚠️ UPDATE: change to current NSC report folder name (e.g. "2025 December")
                                        "2025 December",
+                                       # ⚠️ UPDATE: change to current NSC detail report file name
                                        "10042443_10042443-205673-DETAIL-EFFDT-20251120-RUNDT-20251203.csv"))
 
-#load master student directory file
-master_stu_list<- read_csv(file.path(code_file_dir,
-                                     "master-student-list-rfk-2012-2025.csv")) 
-
-#NOTE: Need to update directory to a box folder.
+#load most recent master student directory file
+master_stu_list<- read_csv(file.path(box_file_dir,
+                                     "College Data",
+                                     "Postsecondary Database",
+                                     #⚠️ UPDATE: change to school site
+                                     "UCLA Community School PSD",
+                                     "Master Student List",
+                                     #⚠️ UPDATE: change to most recent master student list file name
+                                     "master-student-list-rfk-2012-2025.csv"))
 
 #load most recent psd file
 previous_psd <- read_csv(file.path(box_file_dir,
+                                   "College Data",
                                    "Postsecondary Database",
                                    "UCLA Community School PSD",
+                                   # ⚠️ UPDATE: change to most recent PSD file name
                                    "5sept2025-psd-yo.csv"))
 
 ## -----------------------------------------------------------------------------
-##  Part 1 clean nsc data set
+##  Part 1 - Clean NSC Dataset
 ## -----------------------------------------------------------------------------
 
-#1a. manipulating nsc data clean_names_nsc_data function
-nsc_data <-clean_names_nsc_data(nsc_detail_report)
+# 1. Standardize NSC column names using clean_nsc_names()
+nsc_data <- clean_names_nsc_data(nsc_detail_report)
 
-#1b. check the nsc_data data frame (df) renames columns
-names(nsc_data)
+# Confirm key columns were renamed correctly
+expected_cols <- c("college_code", "record_found", "cc_4year",
+                   "he_graduated", "coll_grad_date", "hs_grad_date",
+                   "req_return_field")
 
-#2. get stu id mutate (stu_id_nsc_data function)
-nsc_data <- stu_id_nsc_data(nsc_data)
+missing_cols <- expected_cols[!expected_cols %in% names(nsc_data)]
 
-#3. Check college name duplicates and edit duplicates ----
+if (length(missing_cols) > 0) {
+  stop(paste("⚠️ The following expected columns are missing after clean_nsc_names():",
+             paste(missing_cols, collapse = ", "),
+             "— NSC file format may have changed"))
+}
+# 2. Add student ID using add_student_id()
+nsc_data <- add_student_id(nsc_data)
+
+# 3. Review college enrollment counts from NSC data
+# Useful for spotting unexpected new colleges and confirming high-enrollment institutions
 college_names <- nsc_data %>% 
   group_by(college_name) %>% 
   summarize(num_names = n(), .groups = "drop") %>%
   arrange(desc(num_names))
-
 print(college_names) 
 
-#4a. Standardize selected college names using college_code
+# 4. Standardize selected college names using college_code
 nsc_data<- nsc_data %>%
   mutate(college_name2 = case_when(
+    # Cal Poly campuses - NSC sends inconsistent truncated names
     college_code == "001149-00" ~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, HUMBOLDT",
     college_code == "001143-00" ~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, SAN LUIS OBISPO",
     college_code == "001144-00"~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, POMONA",
@@ -100,146 +150,190 @@ nsc_data<- nsc_data %>%
     ) %>% 
   rename(college_name = 'college_name2')
 
-#Check for new colleges
-nsc_data %>% 
-  group_by(college_name) %>% 
-  summarize(num_names=n()) %>% 
-  print( n = 93)  #check for new colleges
+# 5. Add PSD-specific variables using add_psd_variables()
+# Creates system_type, record_year, record_term, status_source
+# enrollment_begin arrives from NSC as YYYYMMDD string
+# ymd() in add_psd_variables() converts to date; month() extracts record_term logic
+nsc_data <- add_psd_variables(nsc_data, institution_lookup)
 
-#4b. Count only nsc enrollment records not graduation or missing records
-str_view(string =nsc_data$enrollment_begin, pattern = '^\\d{4}') #record_year
-str_view(string =nsc_data$enrollment_begin,
-         pattern = '^(\\d{4})(\\d\\d)(\\d\\d)') #record term
+# Confirm new columns were added correctly
+expected_psd_cols <- c("system_type", "record_year", "record_term", "status_source")
+missing_psd_cols <- expected_psd_cols[!expected_psd_cols %in% names(nsc_data)]
 
-#5a. Run psd_var_nsc function to create psd specific variables (i.e. system type
-# record term, record year)
-nsc_data <- psd_var_nsc(nsc_data)
-names(nsc_data)
+if (length(missing_psd_cols) > 0) {
+  stop(paste("⚠️ The following expected columns are missing after add_psd_variables():",
+             paste(missing_psd_cols, collapse = ", ")))
+}
 
-#5b.Check system type if new school that hasn't been assigned a system_type
-system_types <- nsc_data %>% 
-  group_by(system_type) %>% 
-  summarize(num_names = n(), .groups = "drop") %>%
-  print(n=100)  
+# Confirm all colleges matched to institution_lookup
+new_colleges <- nsc_data |>
+  filter(is.na(system_type)) |>
+  distinct(college_code, college_name) |>
+  arrange(college_name)
 
-##GUIDANCE
-# - If there new colleges go back to edit psd_var_nsc function in psd_function_list.R to assign system type
-# - Refer to PSD documentation to decide assigning system type
+if (nrow(new_colleges) > 0) {
+  cat("⚠️  WARNING: The following colleges are missing from institution_lookup.csv:\n")
+  print(new_colleges)
+  cat("Add them to institution_lookup.csv in Box before proceeding.\n")
+  stop("Unmatched colleges found.")
+}
+# GUIDANCE:
+# - Add new colleges to institution_lookup.csv in Box
+# - Refer to PSD documentation to determine correct system_type
 
 ## -----------------------------------------------------------------------------
-## Part 2 - clean master student list
+## Part 2 - Clean Master Student List
 ## -----------------------------------------------------------------------------
+# GUIDANCE:
+# - Verify that the expected most recent class year appears in the output below.
+# - REQUIRED before proceeding: confirm the most recent graduating class is present.
+# - If missing: check the correct file was loaded and has been updated by the counselor.
+# - Use the count below for a breakdown by graduating class.
 
-#REQUIRED VALIDATION:
-# - Confirm that the most recent graduating class is included in the mas_stu_list.
-# - This step is REQUIRED before proceeding.
-
-#1. Check available graduation years in the dataset
+# 1. Verify master student list loaded correctly
+# Check graduation years present and student counts per cohort
 unique(master_stu_list$hs_grad_year)
-names(master_stu_list)
 
-# OPTIONAL: count students by graduating class
 master_stu_list %>%
   count(hs_grad_year)
 
-#2. Prepare master list to merge with NSC data
-master_stu_df <- master_stu_list %>% mutate(
-  notes = as.character(notes)) %>% select(
-  student_id, gender, race_ethnicity, poverty_indicator,hs_diploma,psd_id,notes)
+# Confirm expected cohort is present — warning only, not a stop
+# cohort may not be ready yet in August — confirm with counselor before proceeding
+current_year <- as.integer(format(Sys.Date(), "%Y"))
+expected_cohort <- current_year - 1
 
-# GUIDANCE:
-# - Verify that the expected most recent class year (e.g., current senior cohort) appears
-# - If the most recent class is missing: 
-#   - Check that the correct master student list file was loaded
-#   - Confirm the file has been updated with information from the counselor
-# - Do NOT proceed until the most recent class is present.
+if (!expected_cohort %in% unique(master_stu_list$hs_grad_year)) {
+  warning(paste("⚠️ Class of", expected_cohort,
+                "not found in master student list.",
+                "Confirm with counselor before proceeding."))
+}
+
+# 2. Prepare master list to merge with NSC data
+master_stu_df <- master_stu_list %>% mutate(
+  notes = as.character(notes)) %>% 
+  select(student_id, gender, race_ethnicity, poverty_indicator,
+         hs_diploma,psd_id,notes)
 
 ## -----------------------------------------------------------------------------
 ## Part 3 - Merge clean nsc data with clean master student list
 ## -----------------------------------------------------------------------------
 
-#1. Merge nsc data with masterlist using merge_nsc_master function
-nsc_data<-merge_nsc_master(nsc_data, master_stu_df)
+# 1. Check for NSC records that don't match master list BEFORE merging
+# record_found == "N" means NSC searched but found no enrollment — expected, not an error
+# record_found == "Y" with no master list match = student ID mismatch — investigate
+# before proceeding
 
-#2. Check merge for duplicate column names
-names(nsc_data)
-
-#create object of obs that didn't merge
 nsc_data_anti <- nsc_data %>%
-  anti_join(master_stu_df, by = "student_id") #assess join
-names(nsc_data_anti)
-nsc_data_anti %>% select(last_name,first_name,student_id) %>% count(student_id)
-nsc_data_anti <- nsc_data_anti %>% filter(record_found == "N")
-rm(nsc_data_anti)#nsc_data_antit #remove data frames
+  anti_join(master_stu_df, by = "student_id") %>%
+  filter(record_found != "N")
 
-#3a Assign class types to all variables
-nsc_data<- assign_class_psd(nsc_data)
+if (nrow(nsc_data_anti) > 0) {
+  cat("⚠️  WARNING: The following students have NSC records but no master list match:\n")
+  print(nsc_data_anti %>% select(last_name, first_name, student_id, record_found))
+  cat("Investigate student ID mismatches before proceeding.\n")
+}
 
-#3b Parse dates to date variables 
-nsc_data<- parse_dates_psd(nsc_data)
+rm(nsc_data_anti)
+
+# 2. Merge NSC data with master student list
+nsc_data <- merge_nsc_master(nsc_data, master_stu_df)
+
+# Confirm merge produced rows
+if (nrow(nsc_data) == 0) {
+  stop("⚠️ Merge produced 0 rows — check student_id format matches between NSC and master list")
+}
+
+# 3. Assign column classes
+nsc_data <- assign_column_classes(nsc_data)
+
+# 4. Parse dates
+nsc_data <- parse_dates(nsc_data)
 
 ## -----------------------------------------------------------------------------
 ## Part 4 - Clean previous psd
 ## -----------------------------------------------------------------------------
 
-#1. Load and cleans most recent psd from previous session 
-psd_data<-psd_data_clean(previous_psd)  
-names(psd_data)
+# 1. Convert the previous PSD to data frame 
+# read_csv returns a tibble converting ensures compatibility downstream
+psd_data <- data.frame(previous_psd)
 
-#2a Assigns class types to specific variables except dates 
-psd_data <- assign_class_psd(psd_data)
+# 2. Assigns correct class types to all columns 
+psd_data <- assign_column_classes(psd_data)
 
-#2b Parse dates to date variables
-psd_data<- parse_dates_psd(psd_data)
+# 3. Parse dates columns to Date class
+psd_data<- parse_dates(psd_data)
 
 ## -----------------------------------------------------------------------------
 ## Part 5 - Select and bind new NSC file records with most recent PSD
 ## -----------------------------------------------------------------------------
 
-
-##CODE THAT ALWAYS CHANGES WHEN UPDATING
-nsc_enrollment_data<- nsc_data %>% filter(between(enrollment_begin, as.Date('2025-07-08'), as.Date('2025-10-27')))  #filters enrollment records by date
-
+# 1. Create smaller dataframe with NEW college enrollment records
 # GUIDANCE:
-# nsc_enrollment_data is a smaller data frame that only contains new college enrollment records
-# - Review latest enrollment_begin date from the previous psd for the first date
-# - Review latest enrollment_begin date from nsc data for the second date
+# Filters to NEW enrollment records only — avoids duplicating records already in previous PSD
+# First date  = day after the latest enrollment_begin from the PREVIOUS NSC pull.
+#               You can refer to the last NSC report date in the Box folder name
+# To find first date: max(psd_data$enrollment_begin, na.rm = TRUE)
+# Second date = latest enrollment_begin in new NSC pull
+# To find second date: max(nsc_data$enrollment_begin, na.rm = TRUE)
+# Example: filter(between(enrollment_begin, as.Date('2025-07-08'), as.Date('2025-10-27')))
+#          First date  = 2025-07-08 (day after latest enrollment_begin in August 2025 NSC pull)
+#          Second date = 2025-10-27 (latest enrollment_begin in December 2025 NSC pull)
+# ⚠️ UPDATE DATES BELOW each run
+nsc_enrollment_data <- nsc_data %>% 
+  filter(between(enrollment_begin, as.Date('2025-07-08'), as.Date('2025-10-27')))
 
-nsc_grads_data<-nsc_data %>%filter(between(coll_grad_date,as.Date('2025-06-18'), as.Date('2025-12-02'))) #filters graduation records by date
-
+# 2. Create smaller dataframe with NEW college graduation records
 # GUIDANCE:
-# nsc_grads_data is a smaller data frame that only contains new graduates data
-# - Review latest coll_grad_date date from the previous psd for the first date
-# - Review latest coll_grad_date from nsc data for the second date
+# Filters to NEW graduation records only — avoids duplicating records already in previous PSD
+# First date  = day after the latest coll_grad_date from the previous psd.
+#               You can refer to the last NSC report date in the Box folder name
+# To find first date: max(psd_data$coll_grad_date,na.rm = TRUE)
+# Second date = latest coll_grad_date in new NSC pull
+# To find second date: max(nsc_data$coll_grad_date, na.rm = TRUE)
+# Example: filter(between(coll_grad_date, as.Date('2025-06-18'), as.Date('2025-12-02')))
+#          First date  = 2025-06-18 (day after latest coll_grad_date in August 2025 NSC pull)
+#          Second date = 2025-12-02 (latest coll_grad_date in December 2025 NSC pull)
+# ⚠️ UPDATE DATES BELOW each run
+nsc_grads_data <- nsc_data %>% 
+  filter(between(coll_grad_date, as.Date('2025-06-18'), as.Date('2025-09-13')))
 
-#2a. Confirm all data frames have the same 34 variable columns
-# Compare column names across datasets
-names(psd_data)
-names(nsc_enrollment_data)
-names(nsc_grads_data)
+# 3a. Confirm all data frames have the same 34 variable columns and class types
+# Check column names match across all three data frames
 
-#2b.Check data frames all have the same class types
+stopifnot(
+  "Column mismatch: psd_data vs nsc_enrollment_data" =
+    identical(names(psd_data), names(nsc_enrollment_data)),
+  "Column mismatch: psd_data vs nsc_grads_data" =
+    identical(names(psd_data), names(nsc_grads_data))
+)
+
+
+# 3b. Check class types match across all three data frames
 check_type(list(nsc_enrollment_data, nsc_grads_data, psd_data),
-     c("nsc_enrollment", "nsc_grads", "psd"))
+           c("nsc_enrollment", "nsc_grads", "psd"))
 
 check_type_mismatch(list(nsc_enrollment_data, nsc_grads_data, psd_data),
-                         c("nsc_enrollment", "nsc_grads", "psd"))
+                    c("nsc_enrollment", "nsc_grads", "psd"))
 
-#3. Bind to enrollment and graduation records to most up-to-date PSD ----
+# 4. Bind to enrollment and graduation records to most up-to-date PSD ----
 
-psd_data_nsc_only<-bind_rows(
+current_psd<-bind_rows(
   psd = psd_data,
   enrollment = nsc_enrollment_data,
   graduation = nsc_grads_data
 )
 
+# Confirm current_psd is larger than previous PSD
+if (nrow(current_psd) < nrow(psd_data)) {
+  stop("⚠️ current_psd has fewer rows than previous PSD — something went wrong in binding")
+}
 
-#4. Sort by consistency and readability ----
-psd_data_nsc_only <- psd_data_nsc_only %>%
+# 5. Sort by consistency and readability ----
+current_psd <- current_psd %>%
   arrange(hs_grad_date,last_name, first_name, middle_name, enrollment_begin)
 
-#5. Format dates for export
-psd_data_nsc_only <- psd_data_nsc_only %>%
+# 6. Format dates for export
+current_psd <- current_psd %>%
   mutate(
     enrollment_begin = format(enrollment_begin, "%Y-%m-%d"),
     enrollment_end = format(enrollment_end, "%Y-%m-%d"),
@@ -247,16 +341,23 @@ psd_data_nsc_only <- psd_data_nsc_only %>%
     hs_grad_date = format(hs_grad_date, "%Y-%m-%d")
     ) 
 
-#6. Write new psd csv file ----
+## -----------------------------------------------------------------------------
+## Part 6 - Export updated PSD to Box
+## -----------------------------------------------------------------------------
 
-#write.csv(psd_data_nsc_only,file = "ddmonthYYYY-schoolsitename-psd-name.csv") 
+#1. Write new psd csv file to Box
+# NAMING CONVENTION: "DDmonthYYYY-schoolsitename-psd-authorfamilyname.csv"
+# Example: "10april2026-rfk-psd-dimagiba.csv"
 
-write.csv(psd_data_nsc_only,
-          file = file.path(code_file_dir,
-            "16april2026-rfk-psd-yo-test.csv")) 
+write.csv(current_psd,
+          file = file.path(box_file_dir,
+                           "College Data",
+                           "Postsecondary Database",
+                           "UCLA Community School PSD",
+                           #⚠️ UPDATE: change to current date and author name following naming convention
+                           "19mayl2026-rfk-psd-dimagiba.csv"),
+          row.names = FALSE)
 
-# NAMING CONVENTION:
-# - Rename output file using:
-#   "DDmonthYYYY-schoolsitename-psd-authorfamilyname.csv"
-# - Example:
-#   "10april2026-rfk-psd-dimagiba.csv"
+## -----------------------------------------------------------------------------
+## END SCRIPT
+## -----------------------------------------------------------------------------
