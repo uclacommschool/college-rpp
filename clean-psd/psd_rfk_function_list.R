@@ -5,6 +5,7 @@
 ## [ AUTH ] < Jeffrey Yo / yjeffrey77 >
 ## [ INIT ] < 4/30/2022, updated 04/15/2026 aridimagiba >
 ##
+
 ################################################################################
 
 #Goal: To have a Rscript that only contains the functions used to clean and
@@ -16,36 +17,64 @@
 # This is better than having the functions and the code to clean 
 # the PSD files as that would make a very long R script.
 
-################################################################################
-
+# EXECUTION ORDER (called by 01-merge-nsc-to-psd.R):
+# clean_nsc_names() → add_student_id() → add_psd_variables() →
+# merge_nsc_master() → assign_column_classes() → parse_dates() →
+# check_type() / check_type_mismatch()
 
 ## -----------------------------------------------------------------------------
-## Part 1 - Create Helper Functions
+# FUNCTIONS IN THIS FILE:
+# Part 1 - NSC Data Cleaning
+#   clean_nsc_names()       — standardizes NSC column names
+#   add_student_id()        — extracts and adds student ID
+#   add_psd_variables()     — adds system_type, record_term, record_year
+#
+# Part 2 - Merging
+#   merge_nsc_master()      — joins NSC data with master student list
+#   assign_column_classes() — standardizes column data types
+#   parse_dates()           — converts date columns to Date class
+#   check_type()            — compares column types across data frames
+#   check_type_mismatch()   — surfaces type mismatches before binding
+#
+# Part 3 - Reference/QA
+#   check_person()          — filter by first and last name
+#   check_person_first()    — filter by first name
+#   check_person_last()     — filter by last name
+#   check_id()              — filter by student ID
 ## -----------------------------------------------------------------------------
 
-# manipulating nsc data ----
-#create clean_nsc_data function, which changes variable names of nsc dataset
+## -----------------------------------------------------------------------------
+## Part 1 - NSC Data Cleaning
+## -----------------------------------------------------------------------------
+
+# FUNCTION: clean_names_nsc_data
+# PURPOSE:  Standardizes NSC column names to PSD naming conventions
+# INPUT:    nsc_detail_report — raw NSC StudentTracker detail CSV
+# OUTPUT:   nsc_data — with renamed columns matching PSD schema
+# CALLED IN: 01-merge-nsc-to-psd.R, Part 1 step 1a
+
 clean_names_nsc_data<-function(nsc_data){
-  # *read in NSC data ----
-  #nsc_data<- read_csv(file.path(data_path)) #make sure to change directory to access nsc files
   nsc_data<- clean_names(nsc_data)
-  #names(nsc_data)<- tolower(names(nsc_data)) #lower cases variables
-  nsc_data <- nsc_data %>% rename(record_found = record_found_y_n, #rename variables with / 
+  # NOTE: clean_names() from janitor handles lowercase conversion
+  # tolower() is redundant here
+  nsc_data <- nsc_data %>% rename(record_found = record_found_y_n,
                                   college_code = college_code_branch,
                                   cc_4year = x2_year_4_year,
                                   public_private = public_private,
-                                  he_graduated = graduated, #specify higher ed graduation
+                                  he_graduated = graduated, 
                                   coll_grad_date = graduation_date,
                                   hs_grad_date = high_school_grad_date,
                                   req_return_field = requester_return_field) 
   return(nsc_data)
 }
 
+# FUNCTION: add_student_id
+# PURPOSE:  Extracts student ID from NSC unique identifier field
+# INPUT:    nsc_data — raw NSC data frame after clean_nsc_names()
+# OUTPUT:   nsc_data — with student_id column added, sorted by grad date
+# CALLED IN: 01-merge-nsc-to-psd.R, Part 1 step 2
 
-# **get stu id mutate ----
-#Add student id variable using stu_id_nsc_data function
-
-stu_id_nsc_data<-function(nsc_data){
+add_student_id<-function(nsc_data){
   nsc_data <- nsc_data %>% 
     mutate(student_id = str_extract(string = your_unique_identifier,
                                   pattern = "[\\d\\w\\d]+[^[:punct:]]"))
@@ -58,152 +87,40 @@ stu_id_nsc_data<-function(nsc_data){
   return(nsc_data)
 }
 
-#clean create new variables using psd_var_nsc function
-#function transforms nsc data into a psd df with these variables
 
-#(student_id,first_name, middle_name, last_name, name_suffix, record_found,
-#req_return_field, high_school_code,hs_grad_date, college_code, college_name,
-#college_state, cc_4year, public_private,enrollment_begin,enrollment_end,
-#enrollment_status, he_graduated, coll_grad_date,degree_title, major,
-#college_sequence,program_code, status_source, record_year, record_term,
-#system_type,hs_grad_year)
+# FUNCTION: add_psd_variables
+# PURPOSE:  Creates psd specific variables not part of the nsc_data: status_source,
+#           system_type, record_year, and record_term. Additionally, transforms 
+#           date strings to ymd dates.
+# INPUT:    nsc_data — raw NSC data frame after clean_nsc_names()
+# OUTPUT:   nsc_data — with status_source,system_type, record_year, 
+#           and record_term columns added. Additionally, transforms 
+#           date strings to ymd dates.
+# CALLED IN: 01-merge-nsc-to-psd.R, Part 1 step 5
 
-#psd_var_nsc function creates psd specific variables not part of the nsc_data
-psd_var_nsc<-function(nsc_data){
-  nsc_data <- nsc_data %>% # *Add psd specific variables----
-  mutate(status_source = recode(record_found, "Y" = "NSC")) %>% #status_source
-    mutate(hs_grad_year=str_match(string = nsc_data$hs_grad_date, pattern = '^\\d{4}')) %>% #add grad year
-    mutate(enrollment_begin_date = ymd(enrollment_begin), # **change strings to dates ----
+add_psd_variables<-function(nsc_data,institution_lookup){
+  nsc_data <- nsc_data %>%
+  # status_source values:
+  # NSC          — record confirmed by National Student Clearinghouse
+  # staff        — record confirmed by school counselor
+  # self-reported — student self-reported their enrollment
+  # old_psd      — record from pre-2019 database before long format conversion
+  # MISSING DATA — status unknown, follow-up needed
+  mutate(status_source = recode(record_found, "Y" = "NSC")) %>% 
+  # add grad year
+  mutate(hs_grad_year=str_match(string = nsc_data$hs_grad_date, pattern = '^\\d{4}')) %>% 
+  # Convert date strings to Date class 
+  # NSC currently sends dates in YYYYMMDD format
+  # Historical format handling (pre-2019) is managed by parse_dates()
+    mutate(enrollment_begin_date = ymd(enrollment_begin),
            enrollment_end_date = ymd(enrollment_end),
-          coll_grad_date_date = ymd(coll_grad_date),
-          hs_grad_date_date = ymd(hs_grad_date)) %>% 
-    mutate(system_type = recode(college_name, "ACADEMY OF ART UNIVERSITY" =	"INP_NP", # ** college_name ---- 
-                                "ALLAN HANCOCK COLLEGE" = "CCC",
-                                "ANTELOPE VALLEY COLLEGE"	= "CCC",
-                                "ARIZONA STATE UNIVERSITY" = "OUT_4YR",
-                                "ART CENTER COLLEGE OF DESIGN"	 =	"INP_NP",
-                                "BERKELEY CITY COLLEGE" = "CCC",
-                                "BUTTE COLLEGE"	= "CCC",
-                                "BUCKNELL UNIVERSITY" = "OUT_4YRP", 
-                                "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, SAN LUIS OBISPO"	= "CSU",
-                                "CALIFORNIA STATE UNIV CHANNEL ISLANDS"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY - BAKERSFIEL"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY - CHICO"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY - DOMINGUEZ"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY - EAST BAY"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY - FULLERTON"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY - LONG BEACH"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY - LOS ANGELE"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY - SACRAMENTO"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY - SAN BERNAR"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY - SAN MARCOS"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY- NORTHRIDGE"	= "CSU",
-                                "CALIFORNIA STATE UNIVERSITY - FRESNO" = "CSU",
-                                "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, HUMBOLDT" = "CSU",
-                                "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, POMONA" = "CSU",
-                                "CARNEGIE MELLON UNIVERSITY" = "OUT_4YRP",
-                                "CHABOT COLLEGE" = "CCC",
-                                "CHAMBERLAIN UNIVERSITY" =	"OUT_FP",
-                                "CHAPMAN UNIVERSITY-ORANGE" =	"INP_NP",
-                                "CITY COLLEGE OF SAN FRANCISCO"= "CCC",
-                                "CITY OF CHICAGO - HAROLD WASHINGTON COLL"= "OUT_CC",
-                                "COCONINO COMMUNITY COLLEGE"= "OUT_CC",
-                                "COLLEGE OF SOUTHERN IDAHO"= "OUT_CC",
-                                "COLLEGE OF THE CANYONS"= "CCC",
-                                "COLUMBIA UNIVERSITY"= "OUT_4YRP",
-                                "CYPRESS COLLEGE"= "CCC",	
-                                "DE ANZA COLLEGE"= "CCC",
-                                "EAST LOS ANGELES COLLEGE"= "CCC",
-                                "EL CAMINO COLLEGE"= "CCC",
-                                "ECPI UNIVERSITY - GREENSBORO" = "OUT_FP",
-                                "FULLERTON COLLEGE" = "CCC",
-                                "FLORIDA POLYTECHNIC UNIVERSITY" = "OUT_4YR",
-                                "GLENDALE COMMUNITY COLLEGE"= "CCC",
-                                "IRVINE VALLEY COLLEGE"= "CCC",
-                                "KALAMAZOO COLLEGE" = "OUT_4YR",
-                                "LASSEN COLLEGE"= "CCC",
-                                "LONG BEACH CITY COLLEGE"= "CCC",
-                                "LOS ANGELES CITY COLLEGE"= "CCC",
-                                "LOS ANGELES SOUTHWEST COLLEGE"= "CCC",
-                                "LOS ANGELES TRADE TECHNICAL"= "CCC",
-                                "LOS ANGELES VALLEY COLLEGE"= "CCC",
-                                "LOS ANGELES PACIFIC UNIVERSITY" = "INP_FP",
-                                "MERCED COLLEGE"= "CCC",
-                                "MOUNT SAINT MARY'S UNIVERSITY" =	"INP_NP",
-                                "MOUNT ST MARY'S UNIVERSITY" = "INP_NP",
-                                "MOUNT SAN ANTONIO COLLEGE"= "CCC",
-                                "MOUNT ST MARY'S COLLEGE" =	"INP_NP",
-                                "NATIONAL UNIVERSITY" = "INP_NP",
-                                "NIGHTINGALE COLLEGE" = "OUT_FP",
-                                "NORTHERN ARIZONA UNIVERSITY" = "OUT_4YR",
-                                "NORTHWESTERN UNIVERSITY" = "OUT_4YRP",
-                                "ORANGE COAST COLLEGE"= "CCC",
-                                "OTIS COLLEGE OF ART AND DESIGN" =	"INP_NP",
-                                "PALOMAR COLLEGE"= "CCC",
-                                "PASADENA CITY COLLEGE"= "CCC",
-                                "PEPPERDINE UNIVERSITY - LAW SCHOOL" = "INP_NP",
-                                "PIMA COMMUNITY COLLEGE" = "OUT_CC",
-                                "POMONA COLLEGE" =	"INP_NP",
-                                "REGENT UNIVERSITY"= "OUT_4YRP",
-                                "RIVERSIDE CITY COLLEGE" = "CCC",
-                                "SACRAMENTO CITY COLLEGE-LOS RIOS CC DIST"= "CCC",
-                                "SAN FRANCISCO STATE UNIVERSITY"	= "CSU",
-                                "SAN JOSE STATE UNIVERSITY"	= "CSU",
-                                "SANTA MONICA COLLEGE"= "CCC",
-                                "SHASTA COLLEGE"= "CCC",
-                                "ST. OLAF COLLEGE" = "OUT_4YRP",
-                                "SUNY STONY BROOK UNIVERSITY" = "OUT_4YR",
-                                "UNIVERSITY OF ALASKA - ANCHORAGE" = "OUT_4YR",
-                                "UNIVERSITY OF ALASKA ANCHORAGE" = "OUT_4YR",
-                                "UNIVERSITY OF ARIZONA" = "OUT_4YR",
-                                "UNIVERSITY OF CALIFORNIA - BERKELEY"= "UC",
-                                "UNIVERSITY OF CALIFORNIA - IRVINE"= "UC",
-                                "UNIVERSITY OF CALIFORNIA - MERCED"= "UC",
-                                "UNIVERSITY OF CALIFORNIA - RIVERSIDE"= "UC",
-                                "UNIVERSITY OF CALIFORNIA-DAVIS"= "UC",
-                                "UNIVERSITY OF CALIFORNIA-LOS ANGELES"= "UC",
-                                "UNIVERSITY OF CALIFORNIA-SAN DIEGO"= "UC",
-                                "UNIVERSITY OF CALIFORNIA-SANTA BARBARA"= "UC",
-                                "UNIVERSITY OF CALIFORNIA-SANTA CRUZ"= "UC",
-                                "UNIVERSITY OF NEVADA LAS VEGAS"	= "OUT_4YR",
-                                "UNIVERSITY OF PHOENIX" = "OUT_FP",
-                                "UNIVERSITY OF SOUTHERN CALIFORNIA" = "INP_NP",
-                                "WELLESLEY COLLEGE"	= "OUT_4YRP",
-                                "WESLEYAN UNIVERSITY"	= "OUT_4YRP",
-                                "WEST COAST UNIVERSITY- NORTH HOLLYWOOD"	= "INP_FP",
-                                "WEST LOS ANGELES COLLEGE"= "CCC",
-                                "WHATCOM COMMUNITY COLLEGE"= "NON_CCC",
-                                "WILLIAM RAINEY HARPER COLLEGE" = "NON_CCC",
-                                "YALE UNIVERSITY"	= "OUT_4YRP",
-                                "UNIVERSIDAD POLITECNICA PUERTO RICO" = "OUT_4YR",
-                                "UNIVERSITY OF SAN FRANCISCO" = "INP_NP",
-                                "UNIVERSITY OF CHICAGO"  = "OUT_4YRP",
-                                "BOSTON UNIVERSITY"  = "OUT_4YRP",
-                                "FRESNO CITY COLLEGE" = "CCC",
-                                "LAMAR STATE COLLEGE - PORT ARTHUR" = "OUT_CC",
-                                "UNITED EDUCATION INSTITUTE- HUNTINGTON P" = "INP_FP",
-                                "LAKE TAHOE COMMUNITY COLLEGE" = "CCC",
-                                "TEXAS STATE TECHNICAL COLLEGE - WACO" = "OUT_CC",
-                                "CALIFORNIA STATE POLYTECHNIC UNIVERSITY" = "CSU",
-                                "FOOTHILL COLLEGE" = "CCC",
-                                "LOS ANGELES MISSION COLLEGE" = "CCC",
-                                "CERRITOS COLLEGE" = "CCC",
-                                "COASTLINE COMMUNITY COLLEGE" = "CCC",
-                                "COLORADO TECHNICAL UNIVERSITY" = "OUT_FP",
-                                "GUILFORD TECHNICAL COMMUNITY COLLEGE" = "OUT_CC",
-                                "LAMAR INSTITUTE OF TECHNOLOGY" = "OUT_CC",
-                                "LOS ANGELES PIERCE COLLEGE" = "CCC",
-                                "NORTH HENNEPIN COMMUNITY COLLEGE" = "OUT_CC",
-                                "PEPPERDINE UNIVERSITY - ONLINE PSYCHOLOGY" = "INP_NP",
-                                "PRINCETON UNIVERSITY" = "OUT_4YRP",
-                                "RIO HONDO COLLEGE" = "CCC",
-                                "SADDLEBACK COLLEGE" = "CCC",
-                                "SANTA BARBARA CITY COLLEGE" = "CCC",
-                                "SCRIPPS COLLEGE" = "INP_NP",
-                                "SWARTHMORE COLLEGE" = "OUT_4YRP",
-                                "UNIVERSITY OF LA VERNE SEM TRADITIONAL" = "INP_NP",
-                                "PEPPERDINE UNIVERSITY - ONLINE PSYCHOLOG" = "INP_NP",
-                                "AMERICAN PUBLIC UNIVERSITY SYSTEM" = "OUT_FP")) %>% # ** system_type----
+           coll_grad_date_date = ymd(coll_grad_date),
+           hs_grad_date_date = ymd(hs_grad_date)) %>% 
+  #join institution (sys_type) attributes using college_code
+  left_join(institution_lookup %>% 
+          select(college_code,system_type),
+          by = "college_code",
+          relationship = "many-to-many") %>% 
   select(student_id,first_name, middle_name, last_name, name_suffix, record_found, req_return_field, high_school_code,
          hs_grad_date_date, college_code, college_name, college_state, cc_4year, public_private,enrollment_begin_date,
          enrollment_end_date,enrollment_status, he_graduated, coll_grad_date_date,degree_title, major, college_sequence,
@@ -212,8 +129,7 @@ psd_var_nsc<-function(nsc_data){
            enrollment_begin = 'enrollment_begin_date',
           enrollment_end = 'enrollment_end_date',
            coll_grad_date = 'coll_grad_date_date')
-  
-  #**record_year ----
+  #add record_year 
   nsc_data <- nsc_data %>%
     mutate(enrollment_year=year(enrollment_begin)) #figure out enrollment year
   nsc_data<-nsc_data  %>%
@@ -222,9 +138,13 @@ psd_var_nsc<-function(nsc_data){
     mutate(record_year = if_else(is.na(enrollment_year),
                                  coll_grad_year,
                                  enrollment_year)) #combine enrollment year and grad year to create record year
-  nsc_data %>% count(enrollment_year, coll_grad_year, record_year)  #check counts for each
-  
-  #** record_term ----
+  # creates psd variable record_term 
+  # record_term logic:
+  # enrollment_begin and enrollment_end month combinations determine record_term
+  # enrollment_begin date arrives from NSC as YYYYMMDD string — converted to date above
+  # UC summer exception: Aug-Sep enrollment at UC = summer (quarter system)
+  # Non-UC: Aug-Sep = fall (semester system starts in August)
+  # Graduation records: term derived from coll_grad_date when he_graduated == "Y"
   nsc_data <-nsc_data%>% mutate(record_term = case_when(
     month(enrollment_begin) == 8 & month(enrollment_end) == 12 ~ "fall",
     month(enrollment_begin) == 9 & month(enrollment_end) == 12 ~ "fall",
@@ -232,7 +152,6 @@ psd_var_nsc<-function(nsc_data){
     month(enrollment_begin) == 7 & month(enrollment_end) == 11 ~ "fall",
     month(enrollment_begin) == 8 & month(enrollment_end) == 9 & system_type == "UC" ~ "summer",
     month(enrollment_begin) == 8 & month(enrollment_end) == 9 & system_type != "UC" ~ "fall",
-    month(enrollment_begin) == 8 & month(enrollment_end) == 8  ~ "fall",
     month(enrollment_begin) == 8 & month(enrollment_end) == 8  ~ "fall",
     month(enrollment_begin) == 8 & month(enrollment_end) == 11  ~ "fall",
     month(enrollment_begin) == 8 & month(enrollment_end) == 10  ~ "fall",
@@ -247,8 +166,7 @@ psd_var_nsc<-function(nsc_data){
     month(coll_grad_date) %in% 10:12  & he_graduated  == "Y" ~ "fall",
     month(coll_grad_date) %in% 1:4  & he_graduated  == "Y" ~ "winter",
     month(coll_grad_date) %in% 5:6  & he_graduated  == "Y"  ~ "spring"))
-  
-  #final nsc data with added variables. missing demographics ----     
+  # Final column selection — demographics added downstream in merge_nsc_master  
   nsc_data<- select(nsc_data, student_id,first_name, middle_name, last_name, name_suffix, record_found, req_return_field, high_school_code,
                     hs_grad_date, college_code, college_name, college_state, cc_4year, public_private,enrollment_begin,
                     enrollment_end,enrollment_status, he_graduated, coll_grad_date,degree_title, major, college_sequence,
@@ -257,106 +175,129 @@ psd_var_nsc<-function(nsc_data){
   return(nsc_data)
 }
 
-#function master_file loads masterlist
-master_file<-function(data_path_master){
-  masterlist<- read_excel(file.path(data_path_master))
-  master_stu_list <- select(masterlist, student_id, gender, race_ethnicity,
-                            poverty_indicator, hs_diploma, notes, psd_id,)
-  #relocate(psd_id, .before = "first_name" )
-  return(master_stu_list)
-}
+## -----------------------------------------------------------------------------
+## Part 2 - Merging
+## -----------------------------------------------------------------------------
 
-#function merge_nsc_master merges nsc data with masterlist
+# FUNCTION: merge_nsc_master
+# PURPOSE:  Merges demographic data from the student master list to the nsc data 
+#           frame
+# INPUT:  nsc_data    — NSC data frame after add_psd_variables()
+#         master_data — master student list with demographics
+# OUTPUT:   nsc_data - with hs_grad_year, gender, race/ethnicity, poverty indicator, hs_diploma
+#           psd_id
+# CALLED IN: 01-merge-nsc-to-psd.R, Part 2 step 2
+
 merge_nsc_master<-function(nsc_data, master_data){
   # psd with student demos----
   merge_data<- inner_join(nsc_data, master_data,  by = "student_id") %>%
-  #relocate(psd_id, .before = "first_name" )
+    relocate(psd_id, .after = last_col())
   return(merge_data)
 }
 
-#function psd_data_clean loads and cleans most recent psd from previous session
-psd_data_clean<-function(psd_data){
-  #psd_data <- read_excel(file.path(psd_file_path))
-  psd_data <- data.frame(psd_data)
-  # **change strings to dates ----
-  #test <- psd_data %>% mutate(enrollment_begin_date = mdy(enrollment_begin), 
-                             # enrollment_end_date = mdy(enrollment_end),
-                             # coll_grad_date_date = mdy(coll_grad_date),
-                             # hs_grad_date_date = mdy(hs_grad_date)) 
-  #attributes(test$enrollment_begin_date)
-  psd_data <- psd_data %>% select("student_id","first_name","middle_name","last_name","name_suffix",      
-                          "record_found","req_return_field" , "high_school_code","hs_grad_date", "college_code" ,    
-                          "college_name","college_state","cc_4year", "public_private","enrollment_begin",
-                          "enrollment_end","enrollment_status","he_graduated" ,"coll_grad_date", "degree_title",     
-                          "major" ,"college_sequence" , "program_code" ,"status_source","record_year" ,"record_term" ,
-                          "system_type", "hs_grad_year","gender", "race_ethnicity", 
-                          "poverty_indicator" ,"hs_diploma","notes", "psd_id") 
-  
-  #psd_data <-  test %>%rename(hs_grad_date ='hs_grad_date_date', #rename date variables
-                             # enrollment_begin = 'enrollment_begin_date',
-                              #enrollment_end = 'enrollment_end_date',
-                             # coll_grad_date = 'coll_grad_date_date')
-  return(psd_data)
+# FUNCTION: parse_dates
+# PURPOSE:  Converts date columns to Date class for consistent analysis and merging
+#           Handles three date formats present in PSD history:
+#           - YYYYMMDD   — current NSC format (2019+)
+#           - M/D/YY     — old NSC format (pre-2019)
+#           - YYYY-MM-DD — saved PSD CSV format
+# INPUT:    df — any PSD data frame with date columns (nsc_data or psd_data)
+# OUTPUT:   df — with enrollment_begin, enrollment_end, coll_grad_date,
+#           hs_grad_date converted to Date class
+# CALLED IN: 01-merge-nsc-to-psd.R, Part 3 step 3b and Part 4 step 3
+
+parse_dates <- function(df) {
+  df %>%
+    mutate(
+      enrollment_begin = as.Date(parse_date_time(enrollment_begin, 
+                                                 orders = c("Ymd", "mdy", "ymd"))),
+      enrollment_end   = as.Date(parse_date_time(enrollment_end,   
+                                                 orders = c("Ymd", "mdy", "ymd"))),
+      coll_grad_date   = as.Date(parse_date_time(coll_grad_date,   
+                                                 orders = c("Ymd", "mdy", "ymd"))),
+      hs_grad_date     = as.Date(parse_date_time(hs_grad_date,     
+                                                 orders = c("Ymd", "mdy", "ymd")))
+    )
 }
 
+# FUNCTION: assign_column_classes 
+# PURPOSE:  Assigns correct data types to all non-date PSD columns and 
+#           standardizes text columns to uppercase for consistent filtering
+#           and reporting. "notes" column is excluded from uppercase conversion
+#           as it contains free-text staff input.
+# INPUT:    df — any PSD data frame (nsc_data or psd_data)
+# OUTPUT:   df — with correct column classes and uppercase text columns
+# CALLED IN: 01-merge-nsc-to-psd.R, Part 3 step 3a and Part 4 step 3
 
-# parse_dates_psd function
-# Converts PSD date variables to Date class for consistent analysis and merging.
-parse_dates_psd <- function(df, format = c("ymd", "mdy")) {
-  format <- match.arg(format)
-  
-  if (format == "ymd") {
-    df %>%
-      mutate(
-        enrollment_begin = ymd(enrollment_begin),
-        enrollment_end = ymd(enrollment_end),
-        coll_grad_date = ymd(coll_grad_date),
-        hs_grad_date = ymd(hs_grad_date)
-      )
-  } else {
-    df %>%
-      mutate(
-        enrollment_begin = mdy(enrollment_begin),
-        enrollment_end = mdy(enrollment_end),
-        coll_grad_date = mdy(coll_grad_date),
-        hs_grad_date = mdy(hs_grad_date)
-      )
-  }
-}
+# COLUMN CLASS REFERENCE
+# Column              Source    Class       toupper()   Rationale
+# -------             ------    -------     ---------   ---------
+# student_id          PSD       character   NO          Case-sensitive ID — changing case breaks joins
+# first_name          NSC       character   YES         Standardize for reporting
+# middle_name         NSC       character   YES         Standardize for reporting
+# last_name           NSC       character   YES         Standardize for reporting
+# name_suffix         NSC       character   YES         Standardize for reporting
+# record_found        NSC       character   YES         NSC flag value — standardize
+# req_return_field    NSC       character   YES         NSC return field — standardize
+# high_school_code    NSC       character   YES         Code stored as string not number
+# college_code        NSC       character   NO          Federal school code — case matters for joins
+# college_name        NSC       character   YES         Standardize for filtering and reporting
+# college_state       NSC       character   YES         Standardize for filtering
+# cc_4year            NSC       character   YES         Controlled vocabulary — standardize
+# public_private      NSC       character   YES         Controlled vocabulary — standardize
+# enrollment_begin    NSC       date        NO          Parsed by parse_dates()
+# enrollment_end      NSC       date        NO          Parsed by parse_dates()
+# enrollment_status   NSC       character   YES         NSC status value — standardize
+# he_graduated        NSC       character   YES         NSC flag value — standardize
+# coll_grad_date      NSC       date        NO          Parsed by parse_dates()
+# degree_title        NSC       character   YES         Standardize for reporting
+# major               NSC       character   YES         Standardize for reporting
+# college_sequence    NSC       numeric     NO          Numeric sequence — toupper() not applicable
+# program_code        NSC       character   YES         Standardize for reporting
+# hs_grad_date        NSC       date        NO          Parsed by parse_dates()
+# status_source       PSD       character   YES         Controlled vocabulary — standardize
+# record_year         PSD       integer     NO          Derived from enrollment_begin — year as integer
+# record_term         PSD       character   YES         Derived from enrollment_begin/end months
+# system_type         PSD       character   YES         Joined from institution_lookup via college_code
+# hs_grad_year        PSD       integer     NO          Derived from hs_grad_date — year as integer
+# gender              MASTER    character   YES         Controlled vocabulary — standardize
+# race_ethnicity      MASTER    character   YES         Controlled vocabulary — standardize
+# poverty_indicator   MASTER    character   YES         Controlled vocabulary — standardize
+# hs_diploma          MASTER    character   YES         Controlled vocabulary — standardize
+# notes               MASTER    character   NO          Staff free text — preserve original formatting
+# psd_id              PSD       character   NO          Case-sensitive ID — changing case breaks joins
 
-# assign_class_psd function
-# assign class to non-date PSD variables 
-assign_class_psd <- function(psd_data){
+assign_column_classes <- function(psd_data){
   psd_data <- psd_data %>% 
     mutate(
       student_id = as.character(student_id),
-      first_name = as.character(first_name),
-      middle_name = as.character(middle_name),
-      last_name = as.character(last_name),
-      name_suffix = as.character(name_suffix),
-      record_found = as.character(record_found),
-      req_return_field = as.character(req_return_field),
-      high_school_code = as.character(high_school_code),
+      first_name = toupper(as.character(first_name)),
+      middle_name = toupper(as.character(middle_name)),
+      last_name = toupper(as.character(last_name)),
+      name_suffix = toupper(as.character(name_suffix)),
+      record_found = toupper(as.character(record_found)),
+      req_return_field = toupper(as.character(req_return_field)),
+      high_school_code = toupper(as.character(high_school_code)),
       college_code = as.character(college_code),
-      college_name = as.character(college_name),
-      college_state = as.character(college_state),
-      cc_4year = as.character(cc_4year),
-      public_private = as.character(public_private),
-      enrollment_status = as.character(enrollment_status),
-      he_graduated = as.character(he_graduated),
-      degree_title = as.character(degree_title),
-      major = as.character(major),
+      college_name = toupper(as.character(college_name)),
+      college_state = toupper(as.character(college_state)),
+      cc_4year = toupper(as.character(cc_4year)),
+      public_private = toupper(as.character(public_private)),
+      enrollment_status = toupper(as.character(enrollment_status)),
+      he_graduated = toupper(as.character(he_graduated)),
+      degree_title = toupper(as.character(degree_title)),
+      major = toupper(as.character(major)),
       college_sequence = as.numeric(college_sequence),
-      program_code = as.character(program_code),
-      status_source = as.character(status_source),
+      program_code = toupper(as.character(program_code)),
+      status_source = toupper(as.character(status_source)),
       record_year = as.integer(record_year),
-      record_term = as.character(record_term),
-      system_type = as.character(system_type),
+      record_term = toupper(as.character(record_term)),
+      system_type = toupper(as.character(system_type)),
       hs_grad_year = as.integer(hs_grad_year),
-      gender = as.character(gender),
-      race_ethnicity = as.character(race_ethnicity),
-      poverty_indicator = as.character(poverty_indicator),
-      hs_diploma = as.character(hs_diploma),
+      gender = toupper(as.character(gender)),
+      race_ethnicity = toupper(as.character(race_ethnicity)),
+      poverty_indicator = toupper(as.character(poverty_indicator)),
+      hs_diploma = toupper(as.character(hs_diploma)),
       notes = as.character(notes),
       psd_id = as.character(psd_id)
     )
@@ -365,8 +306,15 @@ assign_class_psd <- function(psd_data){
 }
 
 
-# check class type function
-# check class type in dataframe before binding
+# FUNCTION: check_type
+# PURPOSE:  Compares column classes across multiple data frames to verify
+#           consistency before binding. Returns a table showing the class
+#           of each column in each data frame.
+# INPUT:    df_list  — list of data frames to compare
+#           df_names — optional character vector of names for each data frame
+# OUTPUT:   data frame with columns: column, and one column per data frame
+#           showing the class of each variable
+# CALLED IN: 01-merge-nsc-to-psd.R, Part 5 step 3b
 check_type <- function(df_list, df_names = NULL) {
   
   # Assign names if not provided
@@ -396,8 +344,15 @@ check_type <- function(df_list, df_names = NULL) {
   return(result)
 }
 
-# check_type_mismatch function
-# confirm mismatches if any
+# FUNCTION: check_type_mismatch
+# PURPOSE:  Filters check_type() output to show only columns where class
+#           types differ across data frames. Returns empty data frame if
+#           all column classes match — confirms data frames are ready to bind.
+# INPUT:    df_list  — list of data frames to compare
+#           df_names — optional character vector of names for each data frame
+# OUTPUT:   data frame showing only mismatched columns and their classes
+#           Returns 0 rows if no mismatches found
+# CALLED IN: 01-merge-nsc-to-psd.R, Part 5 step 3b
 check_type_mismatch <- function(df_list, df_names = NULL) {
   tbl <- check_type(df_list, df_names)
   
@@ -408,37 +363,15 @@ check_type_mismatch <- function(df_list, df_names = NULL) {
 }
 
 ## -----------------------------------------------------------------------------
-## Part 3 - Create missing Dataframe function
+## Part 3 - Reference Functions
 ## -----------------------------------------------------------------------------
-
-psd_missing_func <-function(missing_data_file_path){
-  
-  psd_missing <- read_excel(missing_data_file_path)
-  
-  #add columns to make dataframe match "psd_data_nsc_only" dataframe
-  psd_missing <- psd_missing %>% mutate(
-    student_id = NA, first_name = NA, middle_name = NA,
-    last_name = NA, name_suffix = NA, record_found = NA, 
-    req_return_field = NA, high_school_code = NA, hs_grad_date = NA,
-    college_code = NA, college_name = NA, college_state = NA,    
-    cc_4year = NA, public_private = NA, enrollment_begin = NA, 
-    enrollment_end = NA, enrollment_status = NA, he_graduated = NA,     
-    coll_grad_date = NA, degree_title = NA, major = NA,            
-    college_sequence = NA, program_code = NA, status_source = NA,    
-    record_year = NA, record_term = NA, system_type = NA,
-    hs_grad_year = NA, gender = NA, race_ethnicity = NA, poverty_indicator = NA,
-    hs_diploma = NA, notes = NA, psd_id = NA)
-  
-  #arrange columns to match "psd_data_nsc_only" dataframe
-  col_order <- names(psd_data_nsc_only)
-  psd_missing <- psd_missing[, col_order]
-  
-  return(psd_missing)
-  }
-
-## -----------------------------------------------------------------------------
-## Part 4 - Reference Functions
-## -----------------------------------------------------------------------------
+# NOTE: These are interactive QA tools for ad hoc investigation
+# They are NOT called by any pipeline script
+# Consider moving to psd_rfk_qa_tools.R in next cleanup pass
+# Usage examples:
+# check_id(current_psd, "2024AFLB74")
+# check_person(current_psd, "MARIA", "GARCIA")
+# check_person_last(current_psd, "GARCIA")
 
 #To check and reference the excel sheet with the psd_may2022_nsc_only
 #dataframe, use the following functions:
@@ -466,27 +399,6 @@ check_id <- function(data, stu_id){
   data %>% 
     filter(student_id == stu_id)
 }
-
-
-#function master_file loads masterlist
-missing_master<-function(data_path_master){
-  masterlist<- read_excel(file.path(data_path_master))
-  master_stu_list <- select(masterlist,student_id, first_name, middle_name,last_name,hs_grad_year)
-  return(master_stu_list)
-}
-
-stop_track<-function(data_path_master){
-  stop_track<- read_excel(file.path(data_path_master))
-  stop_track<- select(stop_track,student_id,notes)
-  return(stop_track)
-}
-
-#check in the test dataframe, which uses the functions listed here:
-# test<-check_id(psd_data_nsc_only, "051896M004")
-# test<-check_person_last(psd_data_nsc_only, "PINEDA")
-# test<-check_person_first(psd_data_nsc_only, "GUSTAVO")
-# test<-check_person(psd_data_nsc_only, "KARL", "PINEDA")
-# 
-# #creates tables of the first and last names
-# table(psd_data_nsc_only$first_name)
-# table(psd_data_nsc_only$last_name)
+## -----------------------------------------------------------------------------
+## END SCRIPT
+## -----------------------------------------------------------------------------
