@@ -4,17 +4,21 @@
 ## Table of Contents
 
 1.  [Overview](#overview)
-2.  [Repository Structure](#repository-structure)
-3.  [Privacy & Data Policy](#privacy--data-policy)
-4.  [Dependencies](#dependencies)
-5.  [Annual vs Recurring Tasks](#annual-vs-recurring-tasks)
-6.  [Workflow](#workflow)
-7.  [Data Dictionary](#data-dictionary)
-8.  [NSC Date Formats](#nsc-date-formats)
-9.  [Tracking Policy](#tracking-policy)
-10. [References](#references)
 
-------------------------------------------------------------------------
+2.  [Repository Structure](#repository-structure) 3
+    [Dependencies](#dependencies)
+
+3.  [Annual vs Recurring Tasks](#annual-vs-recurring-tasks)
+
+4.  [Workflow](#workflow)
+
+5.  [Data Dictionary](#data-dictionary)
+
+6.  [NSC Date Formats](#nsc-date-formats)
+
+7.  [Tracking Policy](#tracking-policy)
+
+8.  ## [References](#references)
 
 ## Overview
 
@@ -45,55 +49,6 @@ missing list workflow, and school-facing data collection, see
     │   └── institution_lookup.csv            # Institution classification reference
     ├── README.md                             # GitHub display README
     └── README.qmd                            # README source (Quarto)
-
-------------------------------------------------------------------------
-
-## Privacy & Data Policy
-
-### Student Identifiers
-
-The PSD uses two student identifiers:
-
-| Identifier | Description | Contains PII | Use Case |
-|----|----|----|----|
-| `student_id` | Original school-assigned ID | YES — contains birthdate and gender | Internal joins with NSC data only |
-| `psd_id` | PSD-assigned privacy-safe key | NO | All external reporting and sharing |
-
-### Identifier History
-
-- **2012–2023** — `student_id` submitted to NSC was the LAUSD-assigned
-  ID which contained PII (birthdate and gender embedded in the ID
-  structure)
-- **2024 onward** — `student_id` moved to a generated `psd_id` to remove
-  PII from the NSC submission and external reporting
-
-`psd_id` was introduced in 2024 as a non-PII identifier. All cohorts
-from 2012 onward have been backfilled with a `psd_id` for consistent
-reporting across all years.
-
-**Policy: Use `psd_id` for any data shared outside the research team.**
-`student_id` should never appear in external reports, presentations, or
-shared files.
-
-### `psd_id` Format
-
-Format: `YYYYXXXXnn`
-
-| Component | Example | Description                 |
-|-----------|---------|-----------------------------|
-| `YYYY`    | `2024`  | High school graduation year |
-| `XXXX`    | `AFLB`  | Random 4-letter code        |
-| `nn`      | `74`    | Random 2-digit number       |
-
-Example: `2024AFLB74` = Class of 2024 student
-
-Note: For cohorts 2024 onward, `psd_id` is submitted to NSC as the
-`student_id`. For cohorts 2012–2023, `student_id` was the LAUSD-assigned
-ID — `psd_id` was backfilled for all prior cohorts in 2024 for
-consistent reporting. See Privacy & Data Policy for full details.
-
-`psd_id` is generated manually in Excel when creating the NSC graduate
-file each August/September before submission to NSC.
 
 ------------------------------------------------------------------------
 
