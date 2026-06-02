@@ -56,8 +56,8 @@ source(file.path("psd_rfk_function_list.R"))
 # 1. nsc_detail_report  — update folder name (e.g. "2025 December") and file name
 # 2. master_stu_list    — update file name to most recent master student list
 # 3. previous_psd       — update file name to most recent PSD output
-# 4. Part 5             — update enrollment_begin and coll_grad_date date filters
-# 5. Part 5             — update output file name (naming convention below)
+# 4. See Part 5         — update enrollment_begin and coll_grad_date date filters
+# 5. See Part 5         — update output file name (naming convention below)
 # Run in order: Parts 1 → 2 → 3 → 4 → 5
 
 
@@ -193,7 +193,6 @@ if (nrow(new_colleges) > 0) {
 # 1. Verify master student list loaded correctly
 # Check graduation years present and student counts per cohort
 unique(master_stu_list$hs_grad_year)
-
 master_stu_list %>%
   count(hs_grad_year)
 
@@ -221,7 +220,8 @@ master_stu_df <- master_stu_list %>% mutate(
 # 1. Check for NSC records that don't match master list BEFORE merging
 # record_found == "N" means NSC searched but found no enrollment — expected, not an error
 # record_found == "Y" with no master list match = student ID mismatch — investigate
-# before proceeding
+# before proceeding. 
+# after rm(), the anti-join result is discarded — it was for review only 
 
 nsc_data_anti <- nsc_data %>%
   anti_join(master_stu_df, by = "student_id") %>%
@@ -315,7 +315,7 @@ check_type(list(nsc_enrollment_data, nsc_grads_data, psd_data),
 check_type_mismatch(list(nsc_enrollment_data, nsc_grads_data, psd_data),
                     c("nsc_enrollment", "nsc_grads", "psd"))
 
-# 4. Bind to enrollment and graduation records to most up-to-date PSD ----
+# 4. Bind to enrollment and graduation records to most up-to-date PSD 
 
 current_psd<-bind_rows(
   psd = psd_data,
@@ -346,8 +346,8 @@ current_psd <- current_psd %>%
 ## -----------------------------------------------------------------------------
 
 #1. Write new psd csv file to Box
-# NAMING CONVENTION: "DDmonthYYYY-schoolsitename-psd-authorfamilyname.csv"
-# Example: "10april2026-rfk-psd-dimagiba.csv"
+# NAMING CONVENTION: "YYYYMMDD-schoolsitename-psd-authorlastname.csv"
+# Example: "20260521-rfk-psd-dimagiba.csv"
 
 write.csv(current_psd,
           file = file.path(box_file_dir,
@@ -355,8 +355,11 @@ write.csv(current_psd,
                            "Postsecondary Database",
                            "UCLA Community School PSD",
                            #⚠️ UPDATE: change to current date and author name following naming convention
-                           "19mayl2026-rfk-psd-dimagiba.csv"),
+                           "20260521-rfk-psd-dimagiba.csv"),
           row.names = FALSE)
+
+# Confirm the file was exported to Box folder
+cat("✅ Export complete:", nrow(current_psd), "rows written.\n")
 
 ## -----------------------------------------------------------------------------
 ## END SCRIPT
