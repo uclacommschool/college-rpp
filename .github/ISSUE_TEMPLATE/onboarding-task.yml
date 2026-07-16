@@ -1,0 +1,72 @@
+name: Onboarding Task
+description: A single onboarding/training task for a new team member
+title: "[Onboarding] "
+labels: ["onboarding"]
+body:
+  - type: input
+    id: new-hire
+    attributes:
+      label: New hire
+      description: Who is this task for?
+      placeholder: e.g. Jane Doe
+    validations:
+      required: true
+
+  - type: dropdown
+    id: week
+    attributes:
+      label: Week
+      description: When should this be done?
+      options:
+        - Week 1
+        - Week 2
+        - Week 3
+        - Week 4
+        - Ongoing
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Access & Setup
+        - Tools
+        - Codebase
+        - Process
+        - People
+        - Training
+    validations:
+      required: true
+
+  - type: input
+    id: owner
+    attributes:
+      label: Task owner
+      description: Who is responsible for making sure this happens (buddy, manager, IT, etc.)?
+      placeholder: e.g. Manager - Alex Chen
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What needs to happen
+      description: Describe the task and how to know it's complete.
+      placeholder: |
+        Steps:
+        1.
+        2.
+
+        Done when:
+    validations:
+      required: true
+
+  - type: textarea
+    id: resources
+    attributes:
+      label: Links / resources
+      description: Docs, wiki pages, contacts, related repos.
+    validations:
+      required: false

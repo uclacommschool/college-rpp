@@ -1,0 +1,91 @@
+name: NSC Data Pull Workflow
+
+on:
+  schedule:
+    - cron: '0 9 1 5  *'   # May 1    — April effective date window passed
+    - cron: '0 9 1 9  *'   # Sep 1    — August effective date window passed
+    - cron: '0 9 1 12 *'   # Dec 1    — November effective date window passed
+    - cron: '0 9 2  1 *'   # Jan 2    — Annual check-in reminder
+  workflow_dispatch:         # Manual trigger — use anytime from Actions tab
+
+jobs:
+  create-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create NSC Data Pull or Reminder Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const now  = new Date();
+            const mo   = now.getUTCMonth() + 1;
+            const day  = now.getUTCDate();
+            const date = now.toISOString().split('T')[0];
+
+            const periodMap = {
+              5:  { label: 'April',    detail: 'spring enrollment data' },
+              9:  { label: 'August',   detail: 'summer term and spring degree data' },
+              12: { label: 'November', detail: 'first fall freshman enrollment data — highest priority pull' }
+            };
+
+            const isReminder = (mo === 1 && day <= 5);
+            const period     = periodMap[mo];
+
+            const title = isReminder
+              ? `ACTION REQUIRED: Confirm ${now.getUTCFullYear()} NSC effective date schedule`
+              : `NSC Data Pull – ${period?.label ?? ''} Effective Date – ${now.getUTCFullYear()}`;
+
+            const body = isReminder
+              ? `## Confirm NSC Effective Date Schedule for ${now.getUTCFullYear()}
+
+The three automated data pull reminders are set for May 1, September 1, and December 1.
+Before those fire, please verify timing is still appropriate for this year.
+
+- [ ] Check the NSC site for any announced changes to effective date windows
+- [ ] Confirm May 1 is still a safe trigger after the April effective date
+- [ ] Confirm Sep 1 is still a safe trigger after the August effective date
+- [ ] Confirm Dec 1 is still a safe trigger after the November effective date
+- [ ] Update cron schedule in \`.github/workflows/nsc-data-pull.yml\` if needed
+- [ ] Close this issue once confirmed
+
+**Workflow file:** \`.github/workflows/nsc-data-pull.yml\`
+**NSC effective dates reference:** https://help.studentclearinghouse.org/sths/knowledge-base/about-effective-dates-and-academic-years/`
+              : `## NSC Data Pull – ${period?.label ?? ''} Effective Date
+
+The ${period?.label ?? ''} effective date window has passed. This pull covers **${period?.detail ?? ''}**.
+
+**Triggered:** ${date}
+**Assigned to:** <!-- confirm below -->
+
+### Before You Pull
+- [ ] Log into your NSC FTP mailbox and confirm the StudentTracker and Student Detail reports has arrived
+- [ ] Note the exact effective date shown on the report cover
+
+### Data Pull Steps
+- [ ] Download the required dataset for this effective date from the NSC FTP 
+- [ ] Validate row counts against the previous pull
+- [ ] Spot-check a sample of records for accuracy
+- [ ] Create a new folder in the Box College Data > National Student Clearinghouse > School Site StudentTracker Reports
+- [ ] Upload the new StudentTracker folder and StudentDetail report file
+- [ ] Update the data pull log with effective date and row counts
+
+### Wrap Up
+- [ ] Close this issue when complete
+
+### Notes
+<!-- Document anything unexpected, late reports, or data quality issues here -->
+
+---
+**NSC effective dates reference:** https://help.studentclearinghouse.org/sths/knowledge-base/about-effective-dates-and-academic-years/`;
+
+            const labels = isReminder
+              ? ['action-required', 'scheduled']
+              : ['data-task', 'scheduled'];
+
+            await github.rest.issues.create({
+              owner:     context.repo.owner,
+              repo:      context.repo.repo,
+              title,
+              body,
+              labels,
+              assignees: ['your-github-username']   // ← replace this
+            });
