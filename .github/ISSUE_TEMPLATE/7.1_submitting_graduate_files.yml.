@@ -1,0 +1,96 @@
+name: 7.1 Submitting Graduate Files
+description: Track creating and submitting the NSC graduate file for a school site (Section 7.1 of the Technical Guide)
+title: "[7.1 Grad File]: "
+labels: ["data-merge", "7.1"]
+body:
+  - type: input
+    id: school-site
+    attributes:
+      label: School Site
+      description: Which school site is this graduate file for?
+    validations:
+      required: true
+
+  - type: input
+    id: grad-year
+    attributes:
+      label: Graduation Year
+      description: e.g. 2026
+      placeholder: "2026"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "---\n### Request Graduate List"
+
+  - type: checkboxes
+    id: request
+    attributes:
+      label: Request Steps
+      options:
+        - label: Requested report from school staff (full name, date of birth, diploma type, race, gender, poverty indicator)
+        - label: Noted the date degrees were conferred (graduation date)
+        - label: Mindful of LAUSD staff summer break timing when making the request
+
+  - type: markdown
+    attributes:
+      value: "---\n### Build the File"
+
+  - type: checkboxes
+    id: build
+    attributes:
+      label: File Creation Steps
+      options:
+        - label: Followed NSC formatting guide (Submitting Files Knowledge Base articles)
+        - label: "Cohort N includes only students who earned a diploma on the school's graduation date"
+        - label: "Post-June Graduation students excluded from cohort N"
+        - label: "Certificate of Completion (special ed) students excluded from cohort N"
+        - label: Assigned psd_id to each student
+        - label: Saved copy as .csv (downstream workflow use)
+        - label: Saved copy as .txt (NSC submission), using naming convention [school site]_nscgradfile_class[year].txt / .csv
+
+  - type: markdown
+    attributes:
+      value: "---\n### Review Before Submission"
+
+  - type: checkboxes
+    id: review
+    attributes:
+      label: Review Checklist
+      description: Each item corresponds to a check described in Section 7.1 of the Technical Guide
+      options:
+        - label: "Cohort matches N criteria — no Post-June Graduation or Certificate of Completion students included"
+        - label: "Every required field populated — full name, date of birth, diploma type, race, gender, poverty indicator"
+        - label: Names checked for correct spelling
+        - label: "psd_id unique across the file"
+        - label: "Row count matches expected cohort size (cross-checked against school's own graduate count)"
+        - label: ".txt and .csv versions match (not independently edited/drifted)"
+        - label: "File format matches current NSC Submit Graduates File Guide"
+
+  - type: textarea
+    id: issues-found
+    attributes:
+      label: Issues Found / Notes
+      description: Document anything flagged during review (e.g., row count mismatch, formatting guide changes, spelling corrections)
+      placeholder: "Describe any discrepancies and how they were resolved, or note if none were found."
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: "---\n### Submit"
+
+  - type: checkboxes
+    id: submit
+    attributes:
+      label: Submission
+      options:
+        - label: Submitted graduate file to NSC via FTPS secure site
+
+  - type: checkboxes
+    id: sign-off
+    attributes:
+      label: Sign-off
+      options:
+        - label: Graduate file reviewed, submitted, and confirmed complete
