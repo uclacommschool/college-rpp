@@ -51,24 +51,24 @@ if (.Platform$OS.type == "windows") {
 # Load new graduate file
 recent_nsc_graduate_file <- read_delim(file.path(box_file_dir,
                                                  "College and Career RPP",
-                                                 "1. NSC Data Set",
+                                                 "1. NSC Dataset",
                                                  "RFK",
-                                                 "Grad Files",
+                                                 "Graduate Files",
                                                  "Raw Data (TXT)",
                                                  # ⚠️ UPDATE: update file name to most recent graduate file
-                                                 "uclacs_ncsgradfile_class2026.txt"),
+                                                 "uclacs_nscgradfile_class2026.txt"),
                                        col_names = FALSE)
 
 # Load most recent master student list
 # NOTE: Moving forward this file is saved as a csv file — now reading with read_delim
 master_stu_list <- read_delim(file.path(box_file_dir,
                                         "College and Career RPP",
-                                        "1. NSC Data Set",
+                                        "1. NSC Dataset",
                                         "RFK",
                                         "RFK PSD",
                                         "Master Student List",
                                         # ⚠️ UPDATE: update file name to most recent master student list
-                                        "master-student-list-rfk-2012-2026.csv"))
+                                        "master-student-list-rfk-2012-2025.csv"))
 
 ## -----------------------------------------------------------------------------
 ## Part 1 Clean recent_nsc_graduate_file
@@ -162,7 +162,7 @@ if (nrow(new_master_student) <= nrow(master_stu_list)) {
 # 1. Write new master csv file 
 write.csv(new_master_student, file = file.path(box_file_dir,
                                                "College and Career RPP",
-                                               "1. NSC Data Set",
+                                               "1. NSC Dataset",
                                                "RFK",
                                                "RFK PSD",
                                                "Master Student List",
