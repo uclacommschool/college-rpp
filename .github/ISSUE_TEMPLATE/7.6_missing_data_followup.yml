@@ -1,0 +1,128 @@
+name: 7.6 Missing Data & Follow-Up
+description: Track the November missing-data and stop-tracking follow-up process for a school site (Section 7.6 of the Technical Guide)
+title: "[7.6 Missing Data]: "
+labels: ["data-merge", "7.6", "november-only"]
+body:
+  - type: markdown
+    attributes:
+      value: |-
+        This process runs **once per year, tied to the November NSC pull**. The missing-data list is generated in December, follow-up begins in January, and verified records are merged back typically between March and May. The April and August pulls do not use this process (see Section 7.7).
+
+  - type: input
+    id: school-site
+    attributes:
+      label: School Site
+      description: Which school site is this follow-up for?
+    validations:
+      required: true
+
+  - type: input
+    id: cohort-year
+    attributes:
+      label: November Pull Year
+      description: e.g. 2026
+      placeholder: "2026"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "---\n### 1. Generate Missing Data List & Stop Tracking (December)"
+
+  - type: checkboxes
+    id: generate-list
+    attributes:
+      label: Steps
+      options:
+        - label: Ran 02-create-missing-list-from-psd.R to generate the Missing Data List
+        - label: Identified students from most recent cohort not found in current NSC data
+        - label: "Identified Stop Tracking List: students missing data for 3 consecutive academic years"
+        - label: "Confirmed any previously inactive students who reappeared in NSC data resume tracking"
+        - label: Cross-referenced Missing Data List with PSD to identify new 3-year stop-track students
+        - label: "Updated active missing list: removed stop-track students, marked notes column (e.g., \"stop track 2026\")"
+        - label: "Removed students who completed a Bachelor's degree from active missing list (8-year tracking window)"
+        - label: Confirmed Associate/Certificate to Transfer/Certificate of Completion students remain in tracking
+
+  - type: markdown
+    attributes:
+      value: "---\n### 2. Create & Share School-Facing List"
+
+  - type: checkboxes
+    id: school-facing-list
+    attributes:
+      label: Steps
+      options:
+        - label: Ran 03-transform-missing-list.R to create school-facing list (strips all PII except first_name, last_name, psd_id)
+        - label: "Optional: added rpp_note with student's last known enrollment"
+        - label: "Optional: added preliminary LinkedIn profile link for possibly-graduated students"
+        - label: Uploaded workbook as Google Sheet shared with school and RPP staff ONLY
+        - label: Verified Google Sheet sharing/permission settings are correct
+
+  - type: markdown
+    attributes:
+      value: "---\n### 3. Triangulate & Verify (January–May)"
+
+  - type: checkboxes
+    id: triangulate
+    attributes:
+      label: Verification Channels Used
+      options:
+        - label: "UCLA-CS Partnership Staff & School Counselors — checked initial/staff-entered data, followed up on missing college name/term/pathway"
+        - label: "Direct Outreach to Alumni — emailed students to confirm enrollment/transfer, degree type, alternative paths"
+        - label: "Online Search & Verification — LinkedIn, other social media, Google search"
+
+  - type: checkboxes
+    id: code-document
+    attributes:
+      label: Coding & Documentation
+      options:
+        - label: Recorded college_name, record_year, record_term, degree_type, major (where available) in shared Google Sheet
+        - label: Tracked enrollment_source (staff, linkedin, email, google, or inferred) for each updated record
+        - label: Added verification notes (profile link, staff confirmation detail, noted uncertainty)
+
+  - type: markdown
+    attributes:
+      value: "---\n### 4. Merge Back into PSD"
+
+  - type: checkboxes
+    id: merge-back
+    attributes:
+      label: Steps
+      options:
+        - label: Ran 04-clean-missing-list.R to pull school-facing list from Google Sheets into missing-merge-list-[year].csv
+        - label: Cleaned and standardized column names across cohort tabs, merged into single dataframe
+        - label: For every student on the missing list, generated two records for the cycle (Fall term + "enrolled anytime after fall")
+        - label: "Determined he_graduated (Y/N) by matching staff notes against known graduation language"
+        - label: "Aware coll_grad_date, degree_title, and degree_type may be blank/stale from this step and are not yet reliable"
+        - label: Ran 05-merge-missing-data.R to merge missing-merge-list-[year].csv and stop-track-[year].csv into the PSD
+
+  - type: markdown
+    attributes:
+      value: "---\n### Best Practices Checklist"
+
+  - type: checkboxes
+    id: best-practices
+    attributes:
+      label: Confirm the following were followed
+      options:
+        - label: Documented the source used for each updated record (staff, LinkedIn, Google)
+        - label: Flagged any inferred-but-unconfirmed entries for follow-up
+        - label: Kept internal notes in verification notes field, not mixed into primary data fields
+        - label: "Marked students with no information found as \"MISSING DATA\" rather than leaving blank"
+        - label: "For students reported graduated with no school/term listed: checked PSD for last enrolled college, confirmed with school staff, triangulated with LinkedIn/Google before recording"
+
+  - type: textarea
+    id: issues-found
+    attributes:
+      label: Issues Found / Notes
+      description: Document anything flagged during this cycle (e.g., ambiguous graduation language, sharing/permission issues, records that couldn't be verified)
+      placeholder: "Describe any discrepancies and how they were resolved, or note if none were found."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: sign-off
+    attributes:
+      label: Sign-off
+      options:
+        - label: Missing data and stop-tracking process complete for this site and merged into the PSD
