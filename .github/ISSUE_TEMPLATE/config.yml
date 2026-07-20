@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question about the PSD workflow
+    url: pending
+    about: Ask a general question that isn't tied to a specific Section 7 procedure.
+  - name: Postsecondary Pathways Technical Guide
+    url: https://github.com/uclacommschool/college-rpp
+    about: Refer to the Technical Guide for full procedure documentation before opening an issue.
