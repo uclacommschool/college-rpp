@@ -1,0 +1,82 @@
+name: 7.4 Data Retrieval
+description: Track downloading and filing StudentTracker reports for a school site (Section 7.4 of the Technical Guide)
+title: "[7.4 Retrieval]: "
+labels: ["data-merge", "7.4"]
+body:
+  - type: input
+    id: school-site
+    attributes:
+      label: School Site
+      description: Which school site is this retrieval for?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: effective-date
+    attributes:
+      label: NSC Effective Date
+      description: Which pull is this?
+      options:
+        - August
+        - November
+        - April
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |-
+        ---
+        ### Effective Date Notes (reference)
+        - **August** EFFT: records for students conferred degrees between April EFFT and August 15 (Spring/Summer Graduates); may reflect summer program enrollment (June–August 15) for the newest cohort.
+        - **November** EFFT: first enrollment records for the new cohort; graduation records for students conferred between August EFFT and November (Summer Graduates and some Fall Graduates).
+        - **April** EFFT: graduation records for students conferred between November EFFT and April.
+
+  - type: markdown
+    attributes:
+      value: "---\n### Download"
+
+  - type: checkboxes
+    id: download
+    attributes:
+      label: Download Steps
+      options:
+        - label: Logged in to NSC FTPS secure site using FTPS credentials
+        - label: Downloaded Student Tracker Reports folder (Demographics, Basic, Academic, Top 25 Institutions)
+        - label: Downloaded Student Detail Report (CSV format)
+        - label: Confirmed file names follow the naming convention (FTP Account Number-NSC Account Number-XXX-Type of Report-EFFECTIVE DATE-EFFDT Date-RUN DATE-RUNDT Date)
+
+  - type: markdown
+    attributes:
+      value: |-
+        ---
+        **Note:** The (N) in the Student Tracker reports includes all students the NSC was able to match. Students with a FERPA block do not appear in the Student Detail Report, so Student Tracker and Student Detail counts may differ — this is expected and is reconciled in Section 7.5.
+
+  - type: markdown
+    attributes:
+      value: "---\n### File & Clean Up"
+
+  - type: checkboxes
+    id: file-cleanup
+    attributes:
+      label: Filing Steps
+      options:
+        - label: "Uploaded files to Box: College and Career RPP → 1. NSC Dataset → [school site folder] → Student Tracker Reports"
+        - label: "Filed under correct effective-date folder ([Effective Date Year] [Effective Date Month])"
+        - label: Deleted files from personal computer
+
+  - type: textarea
+    id: issues-found
+    attributes:
+      label: Issues Found / Notes
+      description: Document anything unexpected (e.g., login issues, missing reports, naming convention mismatches)
+      placeholder: "Describe any discrepancies and how they were resolved, or note if none were found."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: sign-off
+    attributes:
+      label: Sign-off
+      options:
+        - label: All reports downloaded, filed in Box, and removed from local machine
