@@ -1,0 +1,90 @@
+name: 7.5 Data Preparation & Merging
+description: Track one round of merging NSC data into the PSD for a school site (Section 7.5 of the Technical Guide)
+title: "[7.5 Merge]: "
+labels: ["data-merge", "7.5"]
+body:
+  - type: input
+    id: school-site
+    attributes:
+      label: School Site
+      description: Which school site is this merge for?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: effective-date
+    attributes:
+      label: NSC Effective Date
+      description: Which pull is this merge for?
+      options:
+        - August
+        - November
+        - April
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "---\n### Pre-Merge"
+
+  - type: checkboxes
+    id: pre-merge
+    attributes:
+      label: Confirm Inputs
+      options:
+        - label: Confirmed availability of master-student-list-[site].csv
+        - label: Confirmed availability of institution_lookup.csv
+
+  - type: markdown
+    attributes:
+      value: "---\n### Run Merge"
+
+  - type: checkboxes
+    id: run-merge
+    attributes:
+      label: Merge Steps
+      options:
+        - label: Ran 01-merge-nsc-to-psd.R and psd_rfk_function_list.R
+        - label: Saved new PSD version in the site's PSD folder using naming convention YYYYMMDD-schoolsitename-psd-authorlastname.csv
+
+  - type: input
+    id: file-name
+    attributes:
+      label: Saved File Name
+      description: Paste the exact file name used, for the record
+      placeholder: "20260415-rfk-psd-dimagiba.csv"
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: "---\n### Review Newly Merged File"
+
+  - type: checkboxes
+    id: review
+    attributes:
+      label: Review Checklist
+      description: Each item corresponds to a check described in Section 7.5 of the Technical Guide
+      options:
+        - label: "Row count sanity check — compared merged output row count against prior PSD version"
+        - label: "FERPA-block reconciliation — gap between Student Tracker and Student Detail reports is within expected range for this site"
+        - label: "psd_id uniqueness — no duplicate values after merge"
+        - label: "Spot-check — verified 2-3 known student records post-merge"
+        - label: "Null/blank check — college_name, enrollment_status, record_term, record_year are populated"
+        - label: "Date format check — dates parsed correctly (not NA or nonsensical, e.g. 1970 birth-year-style errors)"
+
+  - type: textarea
+    id: issues-found
+    attributes:
+      label: Issues Found / Notes
+      description: Document anything flagged during review (e.g., unexpected row count delta, FERPA gap out of range, duplicate psd_id, failed spot-check)
+      placeholder: "Describe any discrepancies and how they were resolved, or note if none were found."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: sign-off
+    attributes:
+      label: Sign-off
+      options:
+        - label: All review checks passed (or discrepancies documented above and resolved)
