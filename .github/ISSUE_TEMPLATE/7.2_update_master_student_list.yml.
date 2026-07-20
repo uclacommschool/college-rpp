@@ -1,0 +1,70 @@
+name: 7.2 Update Master Student List
+description: Track updating the master student list with a new cohort (Section 7.2 of the Technical Guide)
+title: "[7.2 Master List]: "
+labels: ["data-merge", "7.2"]
+body:
+  - type: input
+    id: school-site
+    attributes:
+      label: School Site
+      description: Which school site is this update for?
+    validations:
+      required: true
+
+  - type: input
+    id: cohort-year
+    attributes:
+      label: Graduation Cohort Year
+      description: e.g. 2026
+      placeholder: "2026"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "---\n### Inputs"
+
+  - type: checkboxes
+    id: inputs
+    attributes:
+      label: Confirm Inputs
+      options:
+        - label: "[school site]_nscgradfile_class[year].csv is available (from Section 7.1)"
+        - label: Existing [school site]_master_studentlist_classYY-YY.csv is available
+
+  - type: markdown
+    attributes:
+      value: "---\n### Run Update"
+
+  - type: checkboxes
+    id: run-update
+    attributes:
+      label: Update Steps
+      options:
+        - label: Ran 00-update-master-student-list.R
+        - label: Master student list reflects the new cohort
+
+  - type: input
+    id: file-name
+    attributes:
+      label: Updated File Name
+      description: Paste the exact updated master list file name, for the record
+      placeholder: "rfk_master_studentlist_class25-26.csv"
+    validations:
+      required: false
+
+  - type: textarea
+    id: issues-found
+    attributes:
+      label: Issues Found / Notes
+      description: Document anything unexpected during the update (e.g., mismatched student counts, missing records)
+      placeholder: "Describe any discrepancies and how they were resolved, or note if none were found."
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: sign-off
+    attributes:
+      label: Sign-off
+      options:
+        - label: Master student list update complete and verified
