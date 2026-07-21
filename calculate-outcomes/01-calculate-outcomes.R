@@ -39,7 +39,13 @@ code_file_dir<-file.path(".")
 
 data_file_dir<-file.path("..","..")
 
-box_file_dir<-"C:/Users/jyo/Box/College Data"
+# Detect OS and set Box path accordingly
+if (.Platform$OS.type == "windows") {
+  box_file_dir <- file.path(Sys.getenv("USERPROFILE"), "Box")
+} else {
+  # Box Drive syncs via CloudStorage on Mac
+  box_file_dir <- file.path(Sys.getenv("HOME"), "Library", "CloudStorage", "Box-Box")
+}
 
 #Point this at whichever dated PSD snapshot you're reporting on, e.g.:
 #psd_path<-file.path(box_file_dir,"Postsecondary Database",
@@ -48,8 +54,8 @@ box_file_dir<-"C:/Users/jyo/Box/College Data"
 
 #psd_path<-"/mnt/user-data/uploads/5sept2025-psd-yo_-_test.csv"
 
-psd_path<-file.path(".","calculate-outcomes",
-                    "5sept2025-psd-yo - test.csv")
+# psd_path<-file.path(".","calculate-outcomes",
+#                     "5sept2025-psd-yo - test.csv")
 
 
 #output_dir<-"/mnt/user-data/outputs"
@@ -154,9 +160,15 @@ completion_milestone<-function(completion_date, hs_grad_year){
 ## load & inspect data
 ## ---------------------------
 
-psd<-fread(psd_path, na.strings = c("", "NA")) %>% as_tibble()
+psd<- fread(file.path(box_file_dir,
+                      "College and Career RPP",
+                      "1. NSC Dataset",
+                      "RFK",
+                      "RFK PSD",
+                      # ⚠️ UPDATE: change to most recent PSD file name
+                      "20250905-rfk-psd-yo.csv"))
 
-cat(sprintf("Loaded %s rows, %s columns from %s\n", nrow(psd), ncol(psd), psd_path))
+#cat(sprintf("Loaded %s rows, %s columns from %s\n", nrow(psd), ncol(psd), psd_path))
 
 record_term_v<-psd %>% count(record_term)
 hs_diploma_v<-psd %>% count(hs_diploma)
