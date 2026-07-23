@@ -48,34 +48,51 @@ if (.Platform$OS.type == "windows") {
 # accepts whatever format staff provide while reducing their burden.
 # psd_id is generated manually in Excel before NSC submission.
 
+#RFK Pathfile new graduate file
+#"College and Career RPP", "1. NSC Dataset", "RFK", "Graduate Files", "Raw Data (TXT)",
+# ⚠️ UPDATE: update file name to most recent graduate file "uclacs_nscgradfile_class2026.txt"
+
+#Mann Pathfile new graduate file
+#"College and Career RPP", "1. NSC Dataset", "Mann", "Graduate Files", "Raw Data - NSC Graduate Files TXT",
+# ⚠️ UPDATE: update file name to most recent graduate file "mann_nscgradfile_class2025"
+
 # Load new graduate file
 recent_nsc_graduate_file <- read_delim(file.path(box_file_dir,
                                                  "College and Career RPP",
-                                                 "1. NSC Dataset",
-                                                 "RFK",
-                                                 "Graduate Files",
-                                                 "Raw Data (TXT)",
-                                                 # ⚠️ UPDATE: update file name to most recent graduate file
-                                                 "uclacs_nscgradfile_class2026.txt"),
+                                                 "1. NSC Dataset", 
+                                                 "Mann", 
+                                                 "Graduate Files", 
+                                                 "Raw Data - NSC Graduate Files TXT",
+                                                 # ⚠️ UPDATE: update file name to most recent graduate file 
+                                                 "mann_nscgradfile_class2025.txt"
+                                                 ),
                                        col_names = FALSE)
+
+#RFK Pathfile master student list
+# "College and Career RPP", "1. NSC Dataset", "RFK", "RFK PSD", "Master Student List",
+# ⚠️ UPDATE: update year range to reflect new cohort added "master-student-list-rfk-2012-2025.csv"
+
+#Mann Pathfile master student list
+# "College and Career RPP", "1. NSC Dataset", "Mann", "Mann PSD", "Master Student List",
+# ⚠️ UPDATE: update year range to reflect new cohort added "mann_master_student_list_21-24"
 
 # Load most recent master student list
 # NOTE: Moving forward this file is saved as a csv file — now reading with read_delim
 master_stu_list <- read_delim(file.path(box_file_dir,
-                                        "College and Career RPP",
-                                        "1. NSC Dataset",
-                                        "RFK",
-                                        "RFK PSD",
+                                        "College and Career RPP", 
+                                        "1. NSC Dataset", 
+                                        "Mann", 
+                                        "Mann PSD", 
                                         "Master Student List",
-                                        # ⚠️ UPDATE: update file name to most recent master student list
-                                        "master-student-list-rfk-2012-2025.csv"))
+                                        "mann_master_student_list_21-24.csv"
+                                        ))
 
 ## -----------------------------------------------------------------------------
 ## Part 1 Clean recent_nsc_graduate_file
 ## -----------------------------------------------------------------------------
 
 # 1. Define cohort year
-cohort_year <- 2026  # ⚠️ UPDATE: change to incoming cohort year — used in Parts 1, 2 and 3
+cohort_year <- 2025  # ⚠️ UPDATE: change to incoming cohort year — used in Parts 1, 2 and 3
 
 # 2. Confirm graduate file loaded with expected structure
 # Graduate file should have at least 18 columns — staff demographics occupy fixed positions
@@ -159,15 +176,23 @@ if (nrow(new_master_student) <= nrow(master_stu_list)) {
 ## Part 4 Write new csv file to Box
 ## -----------------------------------------------------------------------------
 
+#RFK Pathfile master student list
+# "College and Career RPP", "1. NSC Dataset", "RFK", "RFK PSD", "Master Student List",
+# ⚠️ UPDATE: update year range to reflect new cohort added "master-student-list-rfk-2012-2026.csv"
+
+#Mann Pathfile master student list
+# "College and Career RPP", "1. NSC Dataset", "Mann", "Mann PSD", "Master Student List",
+# ⚠️ UPDATE: update year range to reflect new cohort added "mann_master_student_list_2021-2025.csv"
+
 # 1. Write new master csv file 
 write.csv(new_master_student, file = file.path(box_file_dir,
                                                "College and Career RPP",
-                                               "1. NSC Dataset",
-                                               "RFK",
-                                               "RFK PSD",
+                                               "1. NSC Dataset", "Mann",
+                                               "Mann PSD",
                                                "Master Student List",
                                                # ⚠️ UPDATE: update year range to reflect new cohort added
-                                               "master-student-list-rfk-2012-2026.csv"),
+                                               "mann_master_student_list_2021-2025.csv"
+                                               ),
           row.names = FALSE
 ) 
 
