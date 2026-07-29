@@ -47,19 +47,8 @@ if (.Platform$OS.type == "windows") {
   box_file_dir <- file.path(Sys.getenv("HOME"), "Library", "CloudStorage", "Box-Box")
 }
 
-#Point this at whichever dated PSD snapshot you're reporting on, e.g.:
-#psd_path<-file.path(box_file_dir,"Postsecondary Database",
-#                     "UCLA Community School PSD",
-#                     "9sept2025-psd-yo.csv")
-
-#psd_path<-"/mnt/user-data/uploads/5sept2025-psd-yo_-_test.csv"
-
-# psd_path<-file.path(".","calculate-outcomes",
-#                     "5sept2025-psd-yo - test.csv")
-
-
-#output_dir<-"/mnt/user-data/outputs"
-#if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+output_dir<-"/mnt/user-data/outputs"
+if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
 ## ---------------------------
 ## helper functions
@@ -163,10 +152,11 @@ completion_milestone<-function(completion_date, hs_grad_year){
 psd<- fread(file.path(box_file_dir,
                       "College and Career RPP",
                       "1. NSC Dataset",
-                      "RFK",
-                      "RFK PSD",
+                      #⚠️ UPDATE: change to school site
+                      "Mann",
+                      "Mann PSD",
                       # ⚠️ UPDATE: change to most recent PSD file name
-                      "20250905-rfk-psd-yo.csv"))
+                      "20260721-mann-psd-sanchez.csv"))
 
 #cat(sprintf("Loaded %s rows, %s columns from %s\n", nrow(psd), ncol(psd), psd_path))
 
