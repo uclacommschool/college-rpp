@@ -67,8 +67,8 @@ source(file.path("psd_rfk_function_list.R"))
 
 # load institution lookup reference table
 institution_lookup <- read_csv(file.path(box_file_dir,
-                                         "College Data",
-                                         "Postsecondary Database",
+                                         "College and Career RPP",
+                                         "1. NSC Dataset",
                                          "institution_lookup.csv"))
 if (nrow(institution_lookup) == 0) {
   stop("⚠️ institution_lookup.csv loaded but is empty — check file path and contents")
@@ -76,32 +76,39 @@ if (nrow(institution_lookup) == 0) {
 
 #load new nsc student detail csv file
 nsc_detail_report <-read_csv(file.path(box_file_dir,
-                                       "College Data",
-                                       "National Student Clearinghouse",
+                                       "College and Career RPP",
+                                       "1. NSC Dataset",
                                        #⚠️ UPDATE: change to school site
-                                       "UCLACS StudentTracker Reports",
+                                       "Mann",
+                                       "Student Tracker Reports",
                                        #⚠️ UPDATE: change to current NSC report folder name (e.g. "2025 December")
-                                       "2025 December",
+                                       "2025-2026 Student Tracker Reports",
+                                       "2026 April",
                                        # ⚠️ UPDATE: change to current NSC detail report file name
-                                       "10042443_10042443-205673-DETAIL-EFFDT-20251120-RUNDT-20251203.csv"))
+                                       "10102683hsst_10102683-216457-DETAIL-EFFDT-20260416-RUNDT-20260709.csv"
+                                       ))
 
 #load most recent master student directory file
 master_stu_list<- read_csv(file.path(box_file_dir,
-                                     "College Data",
-                                     "Postsecondary Database",
+                                     "College and Career RPP",
+                                     "1. NSC Dataset",
                                      #⚠️ UPDATE: change to school site
-                                     "UCLA Community School PSD",
+                                     "Mann",
+                                     "Mann PSD",
                                      "Master Student List",
                                      #⚠️ UPDATE: change to most recent master student list file name
-                                     "master-student-list-rfk-2012-2025.csv"))
+                                     "mann_master_student_list_2021-2025.csv"
+                                     ))
 
 #load most recent psd file
 previous_psd <- read_csv(file.path(box_file_dir,
-                                   "College Data",
-                                   "Postsecondary Database",
-                                   "UCLA Community School PSD",
+                                   "College and Career RPP",
+                                   "1. NSC Dataset",
+                                   "Mann",
+                                   "Mann PSD",
                                    # ⚠️ UPDATE: change to most recent PSD file name
-                                   "5sept2025-psd-yo.csv"))
+                                   "20250916-mann-psd-dimagiba.csv"
+                                   ))
 
 ## -----------------------------------------------------------------------------
 ##  Part 1 - Clean NSC Dataset
@@ -280,7 +287,7 @@ psd_data<- parse_dates(psd_data)
 #          Second date = 2025-10-27 (latest enrollment_begin in December 2025 NSC pull)
 # ⚠️ UPDATE DATES BELOW each run
 nsc_enrollment_data <- nsc_data %>% 
-  filter(between(enrollment_begin, as.Date('2025-07-08'), as.Date('2025-10-27')))
+  filter(between(enrollment_begin, as.Date('2025-06-23'), as.Date('2026-02-17')))
 
 # 2. Create smaller dataframe with NEW college graduation records
 # GUIDANCE:
@@ -295,7 +302,7 @@ nsc_enrollment_data <- nsc_data %>%
 #          Second date = 2025-12-02 (latest coll_grad_date in December 2025 NSC pull)
 # ⚠️ UPDATE DATES BELOW each run
 nsc_grads_data <- nsc_data %>% 
-  filter(between(coll_grad_date, as.Date('2025-06-18'), as.Date('2025-09-13')))
+  filter(between(coll_grad_date, as.Date('2025-05-08'), as.Date('2025-12-12')))
 
 # 3a. Confirm all data frames have the same 34 variable columns and class types
 # Check column names match across all three data frames
@@ -351,11 +358,13 @@ current_psd <- current_psd %>%
 
 write.csv(current_psd,
           file = file.path(box_file_dir,
-                           "College Data",
-                           "Postsecondary Database",
-                           "UCLA Community School PSD",
+                           "College and Career RPP",
+                           "1. NSC Dataset",
+                           "Mann",
+                           "Mann PSD",
                            #⚠️ UPDATE: change to current date and author name following naming convention
-                           "20260521-rfk-psd-dimagiba.csv"),
+                           "20260721-mann-psd-sanchez.csv"
+                           ),
           row.names = FALSE)
 
 # Confirm the file was exported to Box folder
