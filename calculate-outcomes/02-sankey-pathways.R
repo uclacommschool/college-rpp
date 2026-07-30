@@ -64,13 +64,22 @@ if (.Platform$OS.type == "windows") {
 
 #Same PSD snapshot as 01-calculate-outcomes.R -- update to match whichever
 #dated file you're reporting on.
-psd_path<-file.path(box_file_dir,
-                    "College and Career RPP",
-                    "1. NSC Dataset",
-                    "RFK",
-                    "RFK PSD",
-                    # UPDATE: change to most recent PSD file name
-                    "20250905-rfk-psd-yo.csv")
+# psd_path<-file.path(box_file_dir,
+#                     "College and Career RPP",
+#                     "1. NSC Dataset",
+#                     "RFK",
+#                     "RFK PSD",
+#                     # UPDATE: change to most recent PSD file name
+#                     "20250905-rfk-psd-yo.csv")
+
+psd_path <- file.path(box_file_dir,
+                      "College and Career RPP",
+                      "1. NSC Dataset",
+                      #⚠️ UPDATE: change to school site
+                      "Mann",
+                      "Mann PSD",
+                      # ⚠️ UPDATE: change to most recent PSD file name
+                      "20260721-mann-psd-sanchez.csv")
 
 output_dir<-"/mnt/user-data/outputs"
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)

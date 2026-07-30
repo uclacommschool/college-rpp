@@ -166,6 +166,15 @@ psd<- fread(file.path(box_file_dir,
                       # ⚠️ UPDATE: change to most recent PSD file name
                       "20260721-mann-psd-sanchez.csv"))
 
+
+# psd_path<-file.path(box_file_dir,
+#                     "College and Career RPP",
+#                     "1. NSC Dataset",
+#                     "RFK",
+#                     "RFK PSD",
+#                     # UPDATE: change to most recent PSD file name
+#                     "20250905-rfk-psd-yo.csv")
+
 #cat(sprintf("Loaded %s rows, %s columns from %s\n", nrow(psd), ncol(psd), psd_path))
 
 record_term_v<-psd %>% count(record_term)

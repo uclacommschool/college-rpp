@@ -55,7 +55,7 @@ library(jsonlite)
 outcomes_script_path <- "01-calculate-outcomes.R" # UPDATE if these live elsewhere
 sankey_script_path   <- "02-sankey-pathways.R"     # UPDATE if these live elsewhere
 
-REPORT_TITLE <- "UCLA Community School: College-Going Outcomes"
+REPORT_TITLE <- "Mann UCLA Community School: College-Going Outcomes"
 
 # Used only to flag KPI tiles for cohorts whose outcome window hasn't fully
 # elapsed as of this snapshot (e.g. a Class of 2024 student can't show a

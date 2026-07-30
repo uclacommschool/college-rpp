@@ -74,10 +74,10 @@ sankey_script_path<-file.path(code_file_dir, "02-sankey-pathways.R")      #UPDAT
 #output_dir internally, for their own separate outputs).
 #output_dir<-"/mnt/user-data/outputs"
 
-output_file<-file.path(".", "calculate-outcomes")
+output_dir<-file.path(".", "calculate-outcomes")
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
-REPORT_TITLE<-"UCLA Community School: College-Going Outcomes"
+REPORT_TITLE<-"Mann UCLA Community School: College-Going Outcomes"
 
 #Used only to grey/flag KPI tiles for cohorts whose outcome window hasn't
 #fully elapsed as of this snapshot (e.g. a Class of 2024 student can't show
