@@ -61,6 +61,14 @@ if (.Platform$OS.type == "windows") {
 #output_dir<-"/mnt/user-data/outputs"
 #if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
+output_dir<-file.path(box_file_dir,
+                      "College and Career RPP",
+                      "1. NSC Dataset",
+                      "RFK",
+                      "RFK PSD",
+                      # ⚠️ UPDATE: change to most recent PSD file name
+                      "20250905-rfk-psd-yo.csv")
+
 ## ---------------------------
 ## helper functions
 ## ---------------------------
@@ -490,14 +498,14 @@ if (nrow(dq_report) > 0) {
 ## Part 8 - Save and Export Files
 ## -----------------------------------------------------------------------------
 
-fwrite(outcome_snapshot, file.path(output_dir, "outcome_snapshot_summary.csv"))
-fwrite(postsecondary_plans, file.path(output_dir, "postsecondary_plans_detail.csv"))
-fwrite(immediate_enrollment, file.path(output_dir, "immediate_enrollment_detail.csv"))
-fwrite(persistence, file.path(output_dir, "persistence_detail.csv"))
-fwrite(completion, file.path(output_dir, "completion_detail.csv"))
-fwrite(dq_report, file.path(output_dir, "data_quality_flags.csv"))
-
-cat("\nAll outputs written to: ", output_dir, "\n", sep = "")
+# fwrite(outcome_snapshot, file.path(output_dir, "outcome_snapshot_summary.csv"))
+# fwrite(postsecondary_plans, file.path(output_dir, "postsecondary_plans_detail.csv"))
+# fwrite(immediate_enrollment, file.path(output_dir, "immediate_enrollment_detail.csv"))
+# fwrite(persistence, file.path(output_dir, "persistence_detail.csv"))
+# fwrite(completion, file.path(output_dir, "completion_detail.csv"))
+# fwrite(dq_report, file.path(output_dir, "data_quality_flags.csv"))
+# 
+# cat("\nAll outputs written to: ", output_dir, "\n", sep = "")
 
 ## -----------------------------------------------------------------------------
 ## END SCRIPT
