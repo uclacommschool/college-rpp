@@ -3,7 +3,7 @@
 ## [ PROJ ] < College Data Project >
 ## [ FILE ] < 02-create-missing-list-from-psd.R >
 ## [ AUTH ] < Ariana Dimagiba / aridimagiba >
-## [ INIT ] < 03/25/2026, updated 04/15/2026 >
+## [ INIT ] < 03/25/2026, updated 08/17/2026 >
 ##
 ################################################################################
 
@@ -29,24 +29,56 @@ code_file_dir<-file.path(".", "clean-psd")
 
 data_file_dir<-file.path("..","..")
 
-box_file_dir<-file.path("C:/Users/jyo/Box","College Data")
+# Detect OS and set Box path accordingly
+if (.Platform$OS.type == "windows") {
+  box_file_dir <- file.path(Sys.getenv("USERPROFILE"), "Box")
+} else {
+  # Box Drive syncs via CloudStorage on Mac
+  box_file_dir <- file.path(Sys.getenv("HOME"), "Library", "CloudStorage", "Box-Box")
+}
 
 ## -----------------------------------------------------------------------------
 ## load all raw data sets
 ## -----------------------------------------------------------------------------
 
 #load recently updated psd file from 01-merge script
-#current_psd <- read_csv(file.path("..", "updated_psd.csv"))
 
-current_psd <- read_csv(file.path(code_file_dir,
-                                  "16april2026-rfk-psd-yo-test.csv"))
+## For RFK
+## "College and Career RPP", "1. NSC Dataset", "RFK", "RFK PSD", "DATE-rfk-psd-author.csv"
+
+## For Mann
+## "College and Career RPP", "1. NSC Dataset", "Mann", "Mann PSD", "DATE-rfk-psd-author.csv"
+
+current_psd <-read_csv(file.path(box_file_dir,
+                                       "College and Career RPP",
+                                       "1. NSC Dataset",
+                                       #⚠️ UPDATE: change to school site
+                                       "Mann",
+                                       "Mann PSD",
+                                       # ⚠️ UPDATE: change to current PSD csv file
+                                       "20260721-mann-psd-sanchez.csv"
+))
 
 #remove first column
-current_psd<-current_psd %>% select(-c("...1"))
+#current_psd<-current_psd %>% select(-1)
 
 #load master student directory file
-master_stu_list<- read_csv(file.path(code_file_dir,
-                                     "master-student-list-rfk-2012-2025.csv")) 
+## For RFK
+## "College and Career RPP", "1. NSC Dataset", "RFK", "RFK PSD", "Master Student List", "rfk_master_student_list_2021-2025.csv"
+
+## For Mann
+## "College and Career RPP", "1. NSC Dataset", "Mann", "Mann PSD", "Master Student List", "mann_master_student_list_2021-2026.csv"
+
+master_stu_list<- read_csv(file.path(box_file_dir,
+                                     "College and Career RPP",
+                                     "1. NSC Dataset",
+                                     #⚠️ UPDATE: change to school site
+                                     "Mann",
+                                     "Mann PSD",
+                                     "Master Student List",
+                                     #⚠️ UPDATE: change to most recent master student list file name
+                                     "mann_master_student_list_2021-2026.csv"
+))
 
 ## -----------------------------------------------------------------------------
 ## Part 1 - Check Data
@@ -368,13 +400,57 @@ missing_df_clean<-missing_df_clean %>% filter(hs_grad_year > 2016)
 ## -----------------------------------------------------------------------------
 
 #stop track dataframe
-fwrite(stop_track_df, file.path(code_file_dir,
-                                "16april2026-rfk-stop-track-yo-test.csv"))
+
+# NAMING CONVENTION: "YYYYMMDD-schoolsitename-stopTrack-authorlastname.csv"
+# Example: "20260521-rfk-stopTrack-sanchez.csv"
+
+##Path for RFK
+## "College and Career RPP", "1. NSC Dataset", "RFK", "RFK PSD", "Stop Tracking", "YYYYMMDD-rfk-stopTrack-authorlastname.csv"
+
+##Path For Mann
+## "College and Career RPP", "1. NSC Dataset", "Mann", "Mann PSD", "Stop Tracking", "YYYYMMDD-mann-stopTrack-authorlastname.csv"
+
+write.csv(stop_track_df,
+          file = file.path(box_file_dir,
+                           "College and Career RPP",
+                           "1. NSC Dataset",
+                           "Mann",
+                           "Mann PSD",
+                           "Stop Tracking",
+                           #⚠️ UPDATE: change to current date and author name following naming convention
+                           "20260817-mann-stopTrack-sanchez.csv"
+          ),
+          row.names = FALSE)
+
+# Confirm the file was exported to Box folder
+cat("✅ Export complete:", nrow(stop_track_df), "rows written.\n")
 
 
 #missing list
-fwrite(missing_df_clean, file.path(code_file_dir,
-                                "16april2026-rfk-missing-list-test.csv"))
+
+# NAMING CONVENTION: "YYYYMMDD-schoolsitename-missingListInternal-authorlastname.csv"
+# Example: "20260521-rfk-missingListInternal-sanchez.csv"
+
+##Path for RFK
+## "College and Career RPP", "1. NSC Dataset", "RFK", "RFK PSD", "Missing List - Internal", "YYYYMMDD-rfk-missingListInternal-authorlastname.csv"
+
+##Path For Mann
+## "College and Career RPP", "1. NSC Dataset", "Mann", "Mann PSD", "Missing List - Internal", "YYYYMMDD-mann-missingListInternal-authorlastname.csv"
+
+write.csv(missing_df_clean,
+          file = file.path(box_file_dir,
+                           "College and Career RPP",
+                           "1. NSC Dataset",
+                           "Mann",
+                           "Mann PSD",
+                           "Missing List - Internal",
+                           #⚠️ UPDATE: change to current date and author name following naming convention
+                           "20260817-mann-missingListInternal-sanchez.csv"
+          ),
+          row.names = FALSE)
+
+# Confirm the file was exported to Box folder
+cat("✅ Export complete:", nrow(missing_df_clean), "rows written.\n")
 
 ## -----------------------------------------------------------------------------
 ## END SCRIPT
