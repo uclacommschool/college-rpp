@@ -369,6 +369,14 @@ psd_missing_list <- follow_up_responses %>%
     enrollment_status = NA,
     college_sequence = NA,
     program_code = NA,
+    # tracking_status is always "active" for every record this script
+    # produces — if a graduate had enough information collected to
+    # generate ANY follow-up record this cycle (Template R missing-data
+    # included), they're by definition still being actively tracked, not
+    # stopped. "stopped" records are constructed separately by
+    # 02-create-missing-list-from-psd.R, per the tracking_status/
+    # stop-tracking redesign.
+    tracking_status = "active",
     
   )
 
@@ -574,17 +582,23 @@ uppercase_cols <- c("degree_title", "major", "program_code", "gender",
 clean_data <- clean_data %>%
   mutate(across(all_of(uppercase_cols), str_to_upper))
 
-# Reorder/select down to exactly the real PSD's 34 columns, dropping
-# working-only columns (cohort, template_code, final_follow_up_note,
-# review_flag) that aren't part of the PSD schema at all.
+# Reorder/select down to the real PSD's columns plus the new
+# tracking_status field, dropping working-only columns (cohort,
+# template_code, final_follow_up_note, review_flag) that aren't part of
+# the PSD schema at all. tracking_status is new (per the stop-tracking
+# redesign) — not yet part of previous_psd's existing 34 columns, since
+# the underlying CSV hasn't been migrated to include it yet. Placed near
+# status_source/record_term/record_year, the other tracking-related
+# metadata fields.
 psd_column_order <- c(
   "student_id", "first_name", "middle_name", "last_name", "name_suffix",
   "record_found", "req_return_field", "high_school_code", "hs_grad_date",
   "college_code", "college_name", "college_state", "cc_4year", "public_private",
   "enrollment_begin", "enrollment_end", "enrollment_status", "he_graduated",
   "coll_grad_date", "degree_title", "major", "college_sequence", "program_code",
-  "status_source", "record_year", "record_term", "system_type", "hs_grad_year",
-  "gender", "race_ethnicity", "poverty_indicator", "hs_diploma", "notes", "psd_id"
+  "status_source", "tracking_status", "record_year", "record_term", "system_type",
+  "hs_grad_year", "gender", "race_ethnicity", "poverty_indicator", "hs_diploma",
+  "notes", "psd_id"
 )
 
 clean_data <- clean_data %>%
