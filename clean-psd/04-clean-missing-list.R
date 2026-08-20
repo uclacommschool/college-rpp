@@ -1,27 +1,106 @@
 ################################################################################
 ##
 ## [ PROJ ] < Community School Postsecondary Database >
-## [ FILE ] < 01-clean-missing-list.R >
+## [ FILE ] < 04-clean-missing-list.R >
 ## [ AUTH ] < Jeffrey Yo >
-## [ INIT ] < 9/3/25 >
+## [ INIT ] < 9/3/25, updated 08/19/2026 Ariana Dimagiba >
 ##
 ################################################################################
 
-#Goal: Cleans the missing list script. 
+#Goal: Transforms completed school-facing follow-up responses into
+#PSD-compatible records. Produces a cleaned, PSD-column-shaped export
+#(clean_data) for a separate merge script to bind into the existing PSD —
+#this script does NOT perform that bind itself.
 
-#To clean this, first you need to transform the school friendly missing list
-#to the R friendly missing list. Then, merge the R friendly missing list 
-#to the merge list. Finally, add the merge list to the Post-secondary database.
+#To do this: read the completed WORKING follow-up workbook, validate and
+#clean it into an internal missing list, backfill identity/demographic
+#fields from the master student list and prior PSD, then apply the
+#template-driven transformation (template_code + final_follow_up_note ->
+#PSD fields) before exporting.
 
+################################################################################
+## ⚠️ PENDING — tracked here for continuity across sessions (not yet done):
+##
+## 1. Update 02-create-missing-list-from-psd.R for the new folder structure:
+##    - route its regular missing-list output to "Missing List - Internal"
+##    - route its new stop-tracking export to "Stop Tracking" (new folder)
+##
+## 2. Build the new merge script (does not exist yet). Per the
+##    tracking_status/stop-tracking redesign, it should:
+##    - read the existing PSD
+##    - read 04's cleaned output from "Missing List - Cleaned"
+##      (followup_clean_filename, this script's Part 7 export)
+##    - read 02's stop-tracking export from "Stop Tracking"
+##    - standardize schemas/column classes, bind_rows(), validate, export
+##      a new dated PSD snapshot
+##    - this is also where tracking_status ("active"/"stopped") records
+##      get constructed and appended, per the stop-tracking redesign doc
 ################################################################################
 
 ## ---------------------------
 ## libraries
 ## ---------------------------
-library(tidyverse)
-library(readxl)
-library(googlesheets4)
-library(janitor)
+
+library(tidyverse)     # dplyr, stringr, purrr, etc. — core data wrangling
+library(data.table)    # fread() — reads the missing-list CSV from script 02
+library(readxl)        # excel_sheets(), read_excel() — reads the manually-exported
+# .xlsx snapshot of the school-facing missing list (see Part 1)
+library(janitor)       # clean_names() — standardizes column name formatting
+
+## ---------------------------
+## ⚠️ CONFIG — everything that changes per run lives here. Update this
+## block only; nothing below should need touching for a routine new pull.
+## ---------------------------
+
+# ⚠️ UPDATE: school site folder name and PSD folder name
+school_site <- "RFK"
+school_site_psd_folder <- "RFK PSD"
+
+# ⚠️ UPDATE: high_school_code for respective school site 
+high_school_code <- "051662"
+
+# The Fall term year for the CURRENT cycle (not the graduate's HS grad
+# year). Anchors row generation in template_lookup in Part 2.
+# ⚠️ UPDATE: change to the current cycle's Fall year each pull (i.e. 2026L
+# for Fall 2026). Don't forget the trailing L, so R stores this as a true
+# integer rather than a double.
+current_cycle_fall_year <- 2025L
+
+# ⚠️ UPDATE: current WORKING file name (Section 7.7 step 1)
+working_list_filename <- "WORKING_2025-2026 Post-Paths Final's Follow up.xlsx"
+
+# ⚠️ UPDATE: most recent master student list file name (Section 7.2)
+master_list_filename <- "master-student-list-rfk-2012-2026.csv"
+
+# ⚠️ UPDATE: most recent PSD file name (dated per export, e.g. from 01-merge)
+previous_psd_filename <- "20260818-rfk-psd-dimagiba.csv"
+
+# ⚠️ UPDATE: this run's cleaned output filename (dated per export). This
+# is script 04's final PSD-ready output — lands in "Missing Data Follow
+# Up" (repurposed per the tracking_status/stop-tracking redesign) and is
+# read by the separate merge script alongside the existing PSD and script
+# 02's stop-tracking export. This script does NOT bind to the PSD itself.
+followup_clean_filename <- "20260818-rfk-followup-clean-dimagiba.csv"
+
+# ⚠️ UPDATE: this run's excluded-records audit file (dated per export).
+# Preserves the S/T (Duplicate/Superseded) rows dropped from clean_data
+# in Part 5 Step 2, so the reason each was excluded isn't lost once the R
+# session ends — previously computed but never written to disk.
+excluded_records_filename <- "20260818-rfk-excluded-records-dimagiba.csv"
+
+# ⚠️ UPDATE: manually-entered HS graduation dates for any cohort not yet
+# reflected in previous_psd (hasn't been through a PSD merge yet). Add a
+# row for each affected year — not limited to a single "newest" cohort,
+# since more than one recent year can be missing at once (e.g. both 2025
+# and 2026 were missing simultaneously the first time this came up).
+# Dates are plain strings, matching hs_grad_date_lookup's existing
+# character type (previous_psd's dates never parse as true Date, due to
+# NSC's mixed historical date formats) — don't wrap in as.Date().
+manual_hs_grad_dates <- tibble::tribble(
+  ~hs_grad_year, ~hs_grad_date,
+  2025,          "2025-06-09",
+  2026,          "2026-06-09"
+)
 
 ## ---------------------------
 ## directory paths
@@ -35,453 +114,515 @@ code_file_dir<-file.path(".")
 
 data_file_dir<-file.path("..","..")
 
-box_file_dir<-"C:/Users/jyo/Box/College Data"
+# Detect OS and set Box path accordingly
+if (.Platform$OS.type == "windows") {
+  box_file_dir <- file.path(Sys.getenv("USERPROFILE"), "Box")
+} else {
+  # Box Drive syncs via CloudStorage on Mac
+  box_file_dir <- file.path(Sys.getenv("HOME"), "Library", "CloudStorage", "Box-Box")
+}
+
+# set snapshot file path to the WORKING copy of the Postsecondary Paths Follow Up List.
+# ⚠️ Folder reorganization (per stop-tracking/tracking_status redesign):
+# "Missing List - Cleaned" now holds THIS script's cleaned, PSD-ready
+# OUTPUT (Part 7) — the school-facing WORKING file this script READS
+# moved to "Missing List - External" instead. No academic-year subfolder
+# — flat structure, per team decision.
+missing_list_snapshot <- file.path(box_file_dir,
+                                   "College and Career RPP",
+                                   "1. NSC Dataset",
+                                   school_site,
+                                   school_site_psd_folder,
+                                   "Missing List - External",
+                                   working_list_filename)
 
 ## ---------------------------
-## helper functions
+## load lookup tables and helper functions
 ## ---------------------------
 
-# Opens browser for authentication (only once per session)
-gs4_auth()  
+# load institution lookup reference table - one row per college/institution
+institution_lookup <- read_csv(file.path(box_file_dir,
+                                         "College and Career RPP",
+                                         "1. NSC Dataset",
+                                         "institution_lookup.csv"))
 
-## ---------------------------
-## load & inspect data
-## ---------------------------
+# load most recent master student list — one row per student, standing
+# roster maintained via Section 7.2 (00-update-master-student-list.R).
+# Used for identity backfill (student_id, first_name, last_name,
+# hs_grad_year) in Part 4, replacing the old previous_term/psd_merge_list
+# approach, which depended on psd_merge_list already existing in the R
+# session from a prior script — an undocumented cross-script dependency
+# that broke if this script ran on its own.
+master_stu_list <- read_csv(file.path(box_file_dir,
+                                      "College and Career RPP",
+                                      "1. NSC Dataset",
+                                      school_site,
+                                      school_site_psd_folder,
+                                      "Master Student List",
+                                      master_list_filename)) %>%
+  clean_names()
 
-#missing list
-psd_missing_list_example<-read_excel(file.path(box_file_dir,"Postsecondary Database",
-                            "UCLA Community School PSD", "UCLACS Follow Up",
-                            "2024-2025","psd_missing merge_april2025_dimagiba.xlsx"))
+# load current PSD (most recent merge, e.g. from 01-merge) — used only to
+# backfill hs_grad_date in Part 4, since ceremony dates shift year to year
+# and can't be computed from hs_grad_year alone. 
+previous_psd <- read_csv(file.path(box_file_dir,
+                                   "College and Career RPP",
+                                   "1. NSC Dataset",
+                                   school_site,
+                                   school_site_psd_folder,
+                                   previous_psd_filename))
 
+hs_grad_date_lookup <- previous_psd %>%
+  filter(!is.na(hs_grad_date), !is.na(hs_grad_year)) %>%
+  count(hs_grad_year, hs_grad_date, sort = TRUE) %>%
+  group_by(hs_grad_year) %>%
+  slice_head(n = 1) %>%
+  ungroup() %>%
+  select(hs_grad_year, hs_grad_date)
 
-psd_merge_list<-read_excel(file.path(box_file_dir,"Postsecondary Database",
-                                     "UCLA Community School PSD", 
-                                     "29aug2025-psd-dimagiba.xlsx"))
-
-## -----------------------------------------------------------------------------
-## Part 1.1 - Read in School Facing Missing List
-## -----------------------------------------------------------------------------
-
-#Note: only do this once the missing list is finished
-
-#read in the missing file into R
-sheet_url<-'https://docs.google.com/spreadsheets/d/1r6BHHnzuELScjRpUYgmk4WwD4acs1CcJjxOswCwDz_U/edit?gid=1289270796#gid=1289270796'
-sheets <- sheet_names(sheet_url)
-
-sch_missing_list<-map(sheets,
-                      function(x){
-                        read_sheet(sheet_url, sheet = x)
-                      })
-
-names(sch_missing_list)<-sheets
-
-## -----------------------------------------------------------------------------
-## Part 1.2 - Clean School Facing Missing List
-## -----------------------------------------------------------------------------
-
-#clean sch_missing_list
-sch_missing_list<-map(sch_missing_list, clean_names)
-
-#create updated miss to avoid having to keep communicating with google sheets
-sch_missing_list_v2<-sch_missing_list
-
-#make sure columns are the same length and the same
-
-#see column names
-map(sheets, function(x){sch_missing_list_v2[[x]] %>% colnames()})
-
-#create column names string
-col_names<-c("psd_id","first_name","last_name","ariana_notes",
-             "college_enrollment_or_career_vocation",
-             "tearcher_college_counselor","notes")
-
-#update each group (Note: may need to do things manually)
-sch_missing_list_v2[[1]]<-sch_missing_list[[1]] %>% select(-c(psd_id_8))
-colnames(sch_missing_list_v2[[1]])<-col_names
-
-sch_missing_list_v2[[2]]<-sch_missing_list[[2]] %>% select(psd_id, everything())
-
-sch_missing_list_v2[[3]]<-sch_missing_list[[3]] %>% select(-c(psd_id_8))
-colnames(sch_missing_list_v2[[3]])<-col_names
-
-sch_missing_list_v2[[4]]<-sch_missing_list[[4]] %>% select(psd_id, everything())
-
-sch_missing_list_v2[[5]]<-sch_missing_list[[5]] %>% select(-c(psd_id_8))
-colnames(sch_missing_list_v2[[5]])<-col_names
-
-sch_missing_list_v2[[6]]<-sch_missing_list[[6]] %>% select(-c(psd_id_8))
-colnames(sch_missing_list_v2[[6]])<-col_names
-
-sch_missing_list_v2[[7]]<-sch_missing_list[[7]] %>% select(-c(psd_id_9, first_name_3))
-colnames(sch_missing_list_v2[[7]])<-col_names
-
-sch_missing_list_v2[[8]]<-sch_missing_list[[8]]
-
-#see column names
-map(sheets, function(x){sch_missing_list_v2[[x]] %>% colnames()})
-
-#merge list into one group
-sch_missing_list_v2<-bind_rows(sch_missing_list_v2, .id = "cohort")
-
-#filter away any
-sch_missing_list_v2<-sch_missing_list_v2 %>% filter(!is.na(psd_id))
-
-#update column names to better differentiate these columns from other 
-#columns (add "sm")
-colnames(sch_missing_list_v2)<-c("cohort", "psd_id", "first_name_sm",
-                                 "last_name_sm","ariana_notes",
-                                 "college_enrollment_or_career_vocation",
-                                 "teacher_college_counselor","notes_sm")
-
-## -----------------------------------------------------------------------------
-## Part 1.3 - Clean the psd_merge_list dataset
-## -----------------------------------------------------------------------------
-
-#test<-psd_merge_list %>% filter(record_term == "enrolled at anytime")
-
-#record_term values
-record_term_v<-data.frame(psd_merge_list %>% count(record_term))
-
-psd_merge_list<-psd_merge_list %>%
-  mutate(record_term = case_when(
-  record_term %in% c(record_term_v$record_term[2],
-                     "enrolled at anytime",
-                     "enrolled at anytime after fall",
-                     record_term_v$record_term[5])  ~ "enrolled anytime after fall",
-  
-  record_term == "NA" ~ NA,
-  TRUE ~ record_term
-  ))
-
-#check
-psd_merge_list %>% count(record_term)
-  
-#change the order of this term (Note: this needs to change every term)
-psd_merge_list$record_term <- factor(psd_merge_list$record_term,
-                          levels = c("NA", "plans", "winter", "spring", "summer", 
-                                     "enrolled anytime after fall", "fall"),
-                          ordered = TRUE)
-
-psd_merge_list$record_year <- factor(psd_merge_list$record_year,
-                                     levels = c("NA", str_c(2012:2025)),
-                                     ordered = TRUE)
-
-#check
-test<-psd_merge_list %>% arrange(record_term)
-
-
-#clean 
-sch_info_list<-psd_merge_list %>% 
-  count(college_code, college_name,college_state,
-        cc_4year, public_private,system_type)
-
-psd_merge_list<-psd_merge_list %>% 
-  mutate(
-    college_code = case_when(
-      college_name == "CCC" ~ "CCC",
-      is.na(college_code) ~ "NA",
-      TRUE ~ college_code
-    ),
-    college_name = case_when(
-      college_name == "CALIFORNIA STATE UNIVERSITY - LOS ANGELE" ~ "CALIFORNIA STATE UNIVERSITY - LOS ANGELES",
-      college_name == "CALIFORNIA STATE UNIVERSITY - DOMINGUEZ" ~ "CALIFORNIA STATE UNIVERSITY - DOMINGUEZ HILLS",
-      college_name == "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, POMONA" ~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
-      college_name %in% c("CALIFORNIA STATE POLYTECHNIC UNIVERSITY - HUMBOLDT") ~"CALIFORNIA STATE POLYTECHNIC UNIVERSITY, HUMBOLDT",
-      college_name %in% c("CALIFORNIA STATE UNIVERSITY- NORTHRIDGE") ~"CALIFORNIA STATE UNIVERSITY - NORTHRIDGE",
-      college_name %in% c("MOUNT ST MARY'S COLLEGE","MOUNT ST MARY'S UNIVERSITY") ~"MOUNT SAINT MARY'S UNIVERSITY",
-      college_name %in% c("KALAMAZOO UNIVERSITY") ~"KALAMAZOO COLLEGE",
-      college_name %in% c("UNIVERSITY OF ALASKA ANCHORAGE") ~"UNIVERSITY OF ALASKA - ANCHORAGE",
-      college_code == "NO ENROLLMENT" ~ "NO ENROLLMENT",
-      is.na(college_name) ~"NA",
-      TRUE ~ college_name
-    ),
-    college_state = case_when(
-      college_name %in% c("CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
-                          "CALIFORNIA STATE UNIVERSITY - NORTHRIDGE") ~ "CA",
-      college_name %in% c("PRINCETON UNIVERSITY") ~ "NJ",
-      college_code %in% c("MISSING DATA") ~ "MISSING DATA",
-      college_code %in% c("NO ENROLLMENT") ~ "NO ENROLLMENT",
-      college_name %in% c("MAPUA INSTITUTE OF TECHNOLOGY") ~ "PHILIPPINES",
-      is.na(college_state) ~ "NA",
-      TRUE ~ college_state
-      ),
-    cc_4year = case_when(
-      college_name %in% c("CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
-                          "CALIFORNIA STATE UNIVERSITY - NORTHRIDGE") ~ "4-year",
-      college_name %in% c("GLENDALE COMMUNITY COLLEGE") ~ "2-year",
-      college_name %in% c("NO ENROLLMENT") ~ "NO ENROLLMENT",
-      is.na(cc_4year) ~ "NA",
-      TRUE ~ cc_4year
-      ),
-    public_private = case_when(
-      college_name %in% c("CALIFORNIA STATE UNIVERSITY - DOMINGUEZ HILLS",
-                          "CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
-                          "CALIFORNIA STATE UNIVERSITY - NORTHRIDGE") ~ "Public",
-      college_name %in% c("NO ENROLLMENT") ~ "NO ENROLLMENT",
-      is.na(public_private) ~ "NA",
-      TRUE ~ public_private
-    ),
-    system_type = case_when(
-      college_name %in% c("CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
-                          "CALIFORNIA STATE UNIVERSITY - LOS ANGELES",
-                          "CALIFORNIA STATE UNIVERSITY - NORTHRIDGE"
-                          ) ~ "CSU",
-      college_name %in% c("UNIVERSITY OF CALIFORNIA-LOS ANGELES") ~ "UC",
-      college_name %in% c("KALAMAZOO COLLEGE") ~ "OUT_4YR",
-      college_name %in% c("POMONA COLLEGE", "NATIONAL UNIVERSITY") ~ "INP_NP",
-      college_name %in% c("NO ENROLLMENT") ~ "NO ENROLLMENT",
-      system_type %in% c("CHAFFEY COLLEGE", "LOS ANGELES HARBOR COLLEGE") ~ "CCC",
-      system_type %in% c("SAINT PAUL COLLEGE") ~ "OUT_CC",
-      is.na(system_type) ~ "NA",
-      TRUE ~ system_type
-    )
+# Fill in manually-entered dates for any cohort not yet reflected in
+# previous_psd (see CONFIG's manual_hs_grad_dates). Only added for years
+# NOT already present from previous_psd (a gap-fill, not an override) —
+# once a cohort has gone through at least one real PSD merge, the derived
+# value takes over automatically and its manual entry becomes a no-op.
+hs_grad_date_lookup <- hs_grad_date_lookup %>%
+  bind_rows(
+    manual_hs_grad_dates %>% filter(!hs_grad_year %in% hs_grad_date_lookup$hs_grad_year)
   )
 
-#what do these values mean again:
-#CALIFORNIA STATE POLYTECHNIC UNIVERSITY, HUMBOLDT
+dup_grad_date <- hs_grad_date_lookup %>% count(hs_grad_year) %>% filter(n > 1)
+if (nrow(dup_grad_date) > 0) {
+  warning(nrow(dup_grad_date), " hs_grad_year(s) still have ambiguous ",
+          "hs_grad_date after taking the mode — verify before continuing.")
+}
 
+# --- supporting functions ---------------------------------------------------
+# institution matching (institution_aliases, match_institution()), the note-
+# template system (template_lookup, parse_final_note()), the per-tab cleaning
+# function (standardize_tab(), target_columns), and the core per-graduate
+# transformation (split_term_year(), expand_graduate_row()) all live in a
+# separate helper script, matching the pattern already established by
+# psd_rfk_function_list.R for 01-merge-nsc-to-psd.R. Sourced here after
+# institution_lookup is loaded above, since match_institution() references it.
+source(file.path("clean_missing_list_function_list.R"))
 
-# sch_info_list<-test %>% count(college_code, college_name,
-#                                         college_state, cc_4year, public_private, system_type)  
-
-sch_info_list<-psd_merge_list %>% count(college_code, college_name, college_state,
-                              cc_4year, public_private, system_type)  
-
-sch_count<-sch_info_list %>% count(college_name) %>% filter(n>1)
-
-#check
-psd_merge_list %>% count(public_private) 
-#Goal: make it back to 144 categories
 
 ## -----------------------------------------------------------------------------
-## Part 2.1 - Transform School Facing List to PSD Friendly List
+## Part 1 - Read in WORKING_Postsecondary Path Follow Up List
+## -----------------------------------------------------------------------------
+# 1. Read in the Postsecondary Path Follow Up List into R from the manually-exported .xlsx
+# snapshot (see Section 7.6 step 6a). Double check missing_list_snapshot
+# above points to the correct, current dated file before running.
+
+# pull the list of tab names (each tab = one cohort year, e.g. "2017", "2018", ...)
+all_sheets <- excel_sheets(missing_list_snapshot)
+
+# keep only tabs that are actual cohort years (4-digit year) — drops any
+# non-cohort tabs (e.g. "Instructions", "Summary") that may exist in the
+# WORKING file but aren't graduate data
+sheets <- all_sheets[str_detect(str_trim(all_sheets), "^\\d{4}$")]
+dropped_sheets <- setdiff(all_sheets, sheets)
+if (length(dropped_sheets) > 0) {
+  message("Skipping non-cohort tab(s): ", str_c(dropped_sheets, collapse = ", "))
+}
+
+# 2. Read every cohort tab into a list of dataframes, one element per tab
+follow_up_list<- map(sheets, function(x) {
+  tryCatch(
+    read_excel(missing_list_snapshot, sheet = x),  # attempt to read the current tab
+    error = function(e) {
+      # on failure, report which tab and why, then return NULL for that tab
+      # rather than halting the whole map() loop
+      message("Failed on sheet: ", x, " — ", conditionMessage(e))
+      NULL
+    }
+  )
+})
+
+# 3. Name each list element after its source tab (cohort year), so each
+# dataframe is traceable back to the tab it came from
+names(follow_up_list)<-sheets
+
+## -----------------------------------------------------------------------------
+## Part 2 - Clean Follow Up List
+## -----------------------------------------------------------------------------
+# 1. Clean follow_up_list by standardizing column names (lowercase, 
+# underscores, no special characters) across every tab in the list
+follow_up_list<-map(follow_up_list, clean_names)
+
+
+# 2. make sure columns are the same length and the same by printing column names 
+# per tab — used to manually inspect which tabs have extra/missing/misnamed columns 
+# before the fixes below
+map(sheets, function(x){follow_up_list[[x]] %>% colnames()})
+
+# 3. Apply the function to every tab at once — no manual per-tab indexing needed
+follow_up_list <- map(follow_up_list, standardize_tab)
+
+# 5. Check column names in console to confirm all 9 tabs now match col_names 
+# (should print 7 identical column name sets, one per cohort tab)
+map(follow_up_list, colnames)
+
+# 6. Merge list into one group stack all cleaned tabs into one dataframe; 
+# .id = "cohort" adds a column recording which list index/tab each row came from
+follow_up_responses<-bind_rows(follow_up_list, .id = "cohort")
+
+## -----------------------------------------------------------------------------
+## Part 3 - Validate combined data before finalizing
+## -----------------------------------------------------------------------------
+# GUIDANCE: bind_rows() will silently succeed even if a tab was dropped,
+# duplicated, or came out with unexpected structure. These checks stop the
+# script immediately (via stop()) with a clear error message if anything
+# looks wrong, rather than letting a bad merge silently flow into later
+# steps (joins, exports, etc.) where it would be much harder to trace back.
+
+# 1. Row count check: total rows after binding should equal the sum of
+#    rows across all individual tabs — if not, something was dropped or
+#    duplicated during the bind
+expected_rows <- sum(map_dbl(follow_up_list, nrow))
+actual_rows <- nrow(follow_up_responses)
+
+if (expected_rows != actual_rows) {
+  stop("VALIDATION FAILED: row count mismatch after bind_rows(). Expected ",
+       expected_rows, " rows (sum across all tabs) but got ", actual_rows,
+       ". Check standardize_tab() output per tab before continuing.")
+}
+
+# 2. Cohort check: confirm every expected tab/cohort year actually appears
+#    in the combined data (catches a tab silently failing to bind)
+missing_cohorts <- setdiff(sheets, unique(follow_up_responses$cohort))
+
+if (length(missing_cohorts) > 0) {
+  stop("VALIDATION FAILED: the following cohort tab(s) are missing from ",
+       "the combined data: ", str_c(missing_cohorts, collapse = ", "),
+       ". Check whether these tabs failed to read or bind.")
+}
+
+# 3. Column check: confirm the expected 6 columns (5 target + cohort) are present
+expected_cols <- c("cohort", "psd_id", "first_name", "last_name", "template_code",
+                   "final_follow_up_note")
+
+if (!setequal(colnames(follow_up_responses), expected_cols)) {
+  stop("VALIDATION FAILED: unexpected columns in combined data.\n",
+       "Expected: ", str_c(expected_cols, collapse = ", "), "\n",
+       "Got: ", str_c(colnames(follow_up_responses), collapse = ", "))
+}
+
+# 4. Duplicate check: Flag genuinely duplicate entries — same psd_id AND
+#    same template_code appearing more than once within a cohort (the same
+#    status documented twice, likely a data entry error). A psd_id appearing 
+#    multiple times with DIFFERENT template_codes is expected and valid
+dup_check <- follow_up_responses %>% 
+  filter(!is.na(psd_id)) %>%
+  count(cohort, psd_id, template_code) %>% 
+  filter(n > 1)
+
+if (nrow(dup_check) > 0) {
+  stop("VALIDATION FAILED: duplicate psd_id + template_code found within ",
+       "the same cohort (same status documented more than once).\n",
+       "Review these cases before continuing:\n",
+       paste(capture.output(print(dup_check)), collapse = "\n"))
+}
+
+message("All validation checks passed: ", actual_rows, " rows across ",
+        length(unique(follow_up_responses$cohort)), " cohorts.")
+
+# 5. Filter away any drop any rows without a psd_id — these are blank/placeholder 
+# rows that don't correspond to an actual student record
+follow_up_responses<-follow_up_responses %>% filter(!is.na(psd_id))
+
+## -----------------------------------------------------------------------------
+## Part 4 - Transform Internal Missing List to PSD format
 ## -----------------------------------------------------------------------------
 
-#determine missing list
-test<-psd_merge_list %>% filter(hs_grad_year == "2024")
+# 1. Backfill identity fields from master_stu_list and hs_grad_date from hs_grad_date_lookup 
+# (derived from previous_psd above)
 
-#To clean this there are many iterations to do. 
+# sanity check: confirm master_stu_list really is one row per psd_id,
+# rather than silently deduplicating away a real problem if it isn't
+dup_master <- master_stu_list %>% count(psd_id) %>% filter(n > 1)
+if (nrow(dup_master) > 0) {
+  warning(nrow(dup_master), " psd_id(s) appear more than once in ",
+          "master_stu_list — verify this is expected before continuing.")
+}
 
-#First, among those identified in the missing list, filter the merged PSD
-#to only contain those cases from the previous term.
+# 2. Select missing columns in the master student list. Do not include notes, first_name,
+# and last_name.
+master_stu_bf <- master_stu_list %>%
+  select(student_id, middle_name, hs_grad_year, gender, race_ethnicity,
+         poverty_indicator, hs_diploma, psd_id)
 
-#We will use some of the information from the previous cases to fill in the
-#missing cases.
-
-#identify psd_ids of missing cases
-psd_ids_missing<-sch_missing_list_v2$psd_id
-psd_ids_missing<-unique(psd_ids_missing)
-
-#filter by those missing cases
-previous_term<-psd_merge_list %>% filter(psd_id %in% psd_ids_missing)
-
-#For each psd_id, arrange by record_year and record_term, then pick the last row
-
-previous_term <- previous_term %>%
-  group_by(psd_id) %>%
-  arrange(record_year, record_term, .by_group = TRUE) %>%   # sort within each student
-  slice_tail(n = 1) %>%                       # keep the last row per group
-  ungroup()
-
-check<-previous_term %>% count(record_year, record_term)
-
-## -----------------------------------------------------------------------------
-## Part 2.2 - Create Intermediate clean dataframe Part 1
-## -----------------------------------------------------------------------------
-
-#Merge the previous_term dataset with the missing list
-psd_missing_list<-full_join(previous_term, sch_missing_list_v2,
-                by = "psd_id") %>% 
+# 3. Merge master_stu_bf with the follow_up_responses
+psd_missing_list <- follow_up_responses %>%
+  # add demographic information
+  left_join(master_stu_bf, by = "psd_id") %>%
+  # add hs_grad_date
+  left_join(hs_grad_date_lookup, by = "hs_grad_year") %>%
   mutate(
-    hs_grad_year = case_when(
-      is.na(hs_grad_year) ~ "2024",
-      TRUE ~ hs_grad_year
-    )
+    # add variables only generated from the NSC StudentTracker report and not 
+    # applicable 
+    record_found = NA,
+    req_return_field = NA,
+    high_school_code = high_school_code,
+    enrollment_begin = NA,
+    enrollment_end = NA,
+    enrollment_status = NA,
+    college_sequence = NA,
+    program_code = NA,
+    
   )
 
 #check
 colnames(psd_missing_list)
+
 psd_missing_list %>% count(hs_grad_year)
 
-#filter out cases that have a record year of 2025
-psd_missing_list<-psd_missing_list %>% filter(record_year != "2025")
+# 4. Flag graduates who don't appear in master_stu_list at all — a failed
+# left_join here means student_id/hs_grad_year/demographics are all
+# silently NA, which is very different from a graduate legitimately
+# having a blank field. Sets review_flag so this flows into the same
+# needs_review check Part 5 already uses for institution-matching issues,
+# rather than a separate, disconnected mechanism.
+psd_missing_list <- psd_missing_list %>%
+  mutate(review_flag = if_else(is.na(student_id), "MISSING_FROM_MASTER_LIST", NA_character_))
 
-#Update values from student_id to hs_grade_date
-psd_missing_list<-psd_missing_list %>% mutate(
-  student_id = case_when(
-    is.na(student_id) ~ psd_id,
-    TRUE ~ student_id),
-  first_name = case_when(
-    is.na(first_name) ~ first_name_sm,
-    TRUE ~ first_name),
-  last_name = case_when(
-    is.na(last_name) ~ last_name_sm,
-    TRUE ~ last_name),
-  record_found = NA,
-  req_return_field = NA,
-  high_school_code = "051662",
-  hs_grad_date = case_when(
-    hs_grad_year =="2024" ~ as.Date("2024-06-10"),
-    TRUE ~ hs_grad_date
-  )
-)
+# 5. Flag graduates with an unresolved hs_grad_date — matters for
+# downstream 6-year completion calculations, so treated as a real review
+# item rather than just an informational count. Guarded by is.na(review_flag)
+# so it doesn't clobber a MISSING_FROM_MASTER_LIST flag already set above
+# for the same row.
+psd_missing_list <- psd_missing_list %>%
+  mutate(review_flag = case_when(
+    is.na(hs_grad_date) & is.na(review_flag) ~ "MISSING_HS_GRAD_DATE",
+    TRUE ~ review_flag
+  ))
 
 ## -----------------------------------------------------------------------------
-## Part 2.3 - Create Intermediate clean dataframe Part 2
+## Part 5 - Apply Template-Driven Transformation
 ## -----------------------------------------------------------------------------
 
-#Update values from college_code to public_private
-#First mark all these values as NA
-
-psd_missing_list<-psd_missing_list %>% 
+# 1. Reset the fields this section rebuilds from the Final Follow Up Note,
+# rather than trusting any prior-cycle values. Only fields
+# expand_graduate_row() actually sets are reset here — college_code,
+# college_state, cc_4year, public_private, and system_type are NOT reset,
+# since they're exclusively filled by Step 4's institution_lookup join,
+# never by expand_graduate_row() itself. Resetting them here would leave
+# a stale all-NA copy that collides with the join's incoming values,
+# producing duplicate .x/.y columns instead of one clean column.
+psd_missing_list <- psd_missing_list %>%
   mutate(
-    college_code = NA,college_name = NA,college_state = NA,
-    cc_4year = NA, public_private = NA,
-    enrollment_begin = NA, enrollment_end = NA,
-    enrollment_status = NA, he_graduated = NA,
-    coll_grad_date = NA, degree_title = NA, degree_title = NA,
-    degree_title = NA, major = NA, college_sequence = NA,
-    program_code = NA, status_source = NA,
-   # record_year = "2025", record_term = "enrolled anytime after fall",
-    system_type = NA, notes = NA)
-
-#use existing psd_merge_list to create school info list
-
-sch_info_list<-psd_merge_list %>% count(college_code, college_name,
-                                        college_state, cc_4year, public_private,
-                                        system_type)
-#update column order and column names
-sch_info_list<-sch_info_list %>% select(college_name, everything())
-colnames(sch_info_list)<-c("college_name",
-                           str_c(colnames(sch_info_list)[2:length(colnames(sch_info_list))],"_sch"))
-sch_info_list<-sch_info_list %>% select(-c(n_sch))
-
-#filter out Duplicate MISSING DATA case
-sch_info_list<-sch_info_list %>% 
-  filter(!c(college_name == "MISSING DATA" & system_type_sch != "MISSING DATA"))
-
-#update the college_name using college_enrollment_or_career_vocation
-psd_missing_list<-psd_missing_list %>% mutate(
-  college_name = case_when(
-    college_enrollment_or_career_vocation %in% c("CAL POLY POMONA", "Cal Poly Pomona") ~
-      "CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
-    college_enrollment_or_career_vocation %in% 
-      c("CAL STATE NORTHRIDGE", "CSUN","CSUN, MAY HAVE GRADUATED","GRADUATED, CSUN in 2025") ~
-      "CALIFORNIA STATE UNIVERSITY - NORTHRIDGE",
-    college_enrollment_or_career_vocation == "CSU Channel Islands" ~ "CALIFORNIA STATE UNIV CHANNEL ISLANDS",
-    college_enrollment_or_career_vocation %in% 
-      c("CSUDH","GRADUATED FROM DOMINGUEZ HILLS","TRANSFERRED TO CSUDH") ~
-      "CALIFORNIA STATE UNIVERSITY - DOMINGUEZ HILLS",
-    college_enrollment_or_career_vocation %in% c("CSULA","CSULA WAS GRADUATING 2025",
-                                                 "GRADUATED CSULA","GRADUATED FROM CSULA") ~
-      "CALIFORNIA STATE UNIVERSITY - LOS ANGELES",
-    college_enrollment_or_career_vocation == "Chico State" ~ "CALIFORNIA STATE UNIVERSITY - CHICO",
-    college_enrollment_or_career_vocation == "LACC" ~ "LOS ANGELES CITY COLLEGE",
-    college_enrollment_or_career_vocation %in% 
-      c("LATTC","GRADUATED FROM LATTC") ~ "LOS ANGELES TRADE TECHNICAL",
-    college_enrollment_or_career_vocation == "SMC" ~ "SANTA MONICA COLLEGE",
-    college_enrollment_or_career_vocation == "UC Riverside" ~ "UNIVERSITY OF CALIFORNIA - RIVERSIDE",
-    college_enrollment_or_career_vocation == "UC Santa Cruz" ~ "UNIVERSITY OF CALIFORNIA-SANTA CRUZ",
-    college_enrollment_or_career_vocation == "UCD" ~ "UNIVERSITY OF CALIFORNIA-DAVIS",
-    college_enrollment_or_career_vocation %in% 
-      c("UCLA","GRADUATED UCLA","UCLA; MAY HAVE GRADUATED") ~ "UNIVERSITY OF CALIFORNIA-LOS ANGELES",
-    college_enrollment_or_career_vocation %in% c("UC Riverside", "UCR") ~ "UNIVERSITY OF CALIFORNIA - RIVERSIDE",
-    college_enrollment_or_career_vocation == "Woodbury University" ~ "WOODBURY UNIVERSITY",
-    college_enrollment_or_career_vocation == "GRADUATED FROM MILLS COLLEGE" ~ "MILLS COLLEGE",
-    college_enrollment_or_career_vocation == "Graduated from University of Greenwich" ~ "UNIVERSITY OF GREENWICH",
-    college_enrollment_or_career_vocation %in% 
-      c("NOT ENROLLED/WORKING","Not Enrolled/Working") ~ "NO ENROLLMENT",
-    is.na(college_enrollment_or_career_vocation) ~ "MISSING DATA",
-
+    college_name = NA, he_graduated = NA,
+    coll_grad_date = NA, degree_title = NA, major = NA,
+    status_source = NA
   )
-)
 
-check<-psd_missing_list %>% count(college_name, college_enrollment_or_career_vocation)
+# 2. Capture S/T rows separately for the audit trail before they're dropped
+# from the merge — the template text itself documents why each was
+# excluded, so this file is the record of that decision, not the PSD.
+excluded_records <- psd_missing_list %>%
+  left_join(template_lookup %>% select(template_code, row_generation),
+            by = "template_code") %>%
+  filter(row_generation == "excluded")
 
-#Merge sch_info_list with the missing list to get college information
-psd_missing_list<-psd_missing_list %>% left_join(sch_info_list, by = "college_name")
+# 3. Apply expand_graduate_row() to every graduate on the list
+clean_data <- psd_missing_list %>%
+  mutate(.row_id = row_number()) %>%
+  group_split(.row_id) %>%
+  purrr::map_dfr(expand_graduate_row, fall_year = current_cycle_fall_year) %>%
+  select(-.row_id)
 
-#update "college_code","college_state","cc_4year",public_private, system_type 
-psd_missing_list<-psd_missing_list %>% mutate(
-  college_code = college_code_sch,
-  college_state = college_state_sch,
-  cc_4year = cc_4year_sch,
-  public_private = public_private_sch,
-  system_type = system_type_sch
-) 
-  
-#update he_graduated and status_source
-psd_missing_list<-psd_missing_list %>% mutate(
-  he_graduated = case_when(
-    college_enrollment_or_career_vocation %in% 
-      c("GRADUATED","GRADUATED CSULA", "GRADUATED FROM COAST GUARD ACADEMY IN 2024",
-        "GRADUATED FROM CSULA","GRADUATED FROM DOMINGUEZ HILLS",
-        "GRADUATED FROM LATTC","GRADUATED FROM MILLS COLLEGE",
-        "GRADUATED UCLA","GRADUATED, CSUN in 2025","Graduated from University of Greenwich",
-        "NOT ENROLLED/GRADUATED") ~ "Y",
-    is.na(college_name) ~ NA,
-    college_name == "MISSING DATA" ~ NA,
-    TRUE ~ "N"),
-  status_source = "staff"
-)
-
-check<-psd_missing_list %>% count(he_graduated, college_name)
-check<-psd_missing_list %>% 
-  count(he_graduated, college_enrollment_or_career_vocation)  
-
-#update the teacher_college_counselor column
-psd_missing_list<-psd_missing_list %>% mutate(
-  teacher_college_counselor = case_when(
-    is.na(teacher_college_counselor) & !is.na(notes_sm) ~ "Cesare",
-    TRUE ~ teacher_college_counselor
+# 4. Re-attach college metadata (state, 2yr/4yr, public/private, system
+# type) directly from institution_lookup, now that college_name is a
+# properly matched canonical value via match_institution().
+clean_data <- clean_data %>%
+  left_join(
+    institution_lookup %>%
+      select(college_name, college_code, college_state, cc_4year,
+             public_private, system_type),
+    by = "college_name"
   )
-)
 
-#update notes column
-psd_missing_list<-psd_missing_list %>% mutate(
-  notes = case_when(
-    is.na(college_name)|(college_name %in% c("MISSING DATA","NO ENROLLMENT")) ~ NA,
-    TRUE ~ str_c("Cesare confirmed student is attending ", college_name)
-  )
-)
+# 5. Validate institution matching behaved as expected for A and H —
+# these always name a real institution (Verified-tier full enrollment
+# detail and graduation detail, respectively). A missing college_code
+# here likely means match_institution() fell through to Tier 4
+# (UNMATCHED_REVIEW_NEEDED) rather than a parsing issue, since parsing
+# failures are already caught separately by review_flag. Sets review_flag
+# on these rows (rather than just warning) so they flow into the same
+# needs_review check in Step 6, instead of being a disconnected,
+# unfiltered console message.
 
-#make a record_year = 2024 and record_term = fall version
-psd_missing_list1<-psd_missing_list %>% 
-  mutate(record_year = "2024", record_term = "fall")
+# guard: review_flag only exists as a column if at least one row hit
+# PARSE_FAILED/UNRECOGNIZED_TEMPLATE_CODE inside expand_graduate_row().
+# If every row parsed successfully this run, the column is entirely
+# absent — and case_when() below references it on the right-hand side
+# (is.na(review_flag), TRUE ~ review_flag), which requires the column to
+# already exist even though it's being filled in. Ensures it's always
+# present, all-NA if nothing has flagged anything yet.
+if (!"review_flag" %in% names(clean_data)) {
+  clean_data$review_flag <- NA_character_
+}
 
+clean_data <- clean_data %>%
+  mutate(review_flag = case_when(
+    template_code %in% c("A", "H") & is.na(college_code) & is.na(review_flag) ~
+      "MISSING_INSTITUTION_MATCH",
+    TRUE ~ review_flag
+  ))
 
-#make a record_year = 2025 and record_term = enrolled anytime after fall version
-psd_missing_list2<-psd_missing_list %>% 
-  mutate(record_year = "2025", 
-         record_term = "enrolled anytime after fall version")
+missing_institution_check <- clean_data %>%
+  filter(review_flag == "MISSING_INSTITUTION_MATCH")
+if (nrow(missing_institution_check) > 0) {
+  message(nrow(missing_institution_check), " row(s) with template A/H are ",
+          "missing institution_lookup fields (college_code is NA) — likely ",
+          "an unmatched college name (see match_institution()'s ",
+          "UNMATCHED_REVIEW_NEEDED tier). Flagged as review_flag = ",
+          "'MISSING_INSTITUTION_MATCH' — see needs_review in Step 6.")
+}
 
-#merge into a clean dataset
-clean_data<-rbind(psd_missing_list1, psd_missing_list2) %>% 
-  arrange(student_id, record_year)
+# 6. Flag rows needing manual review — unrecognized template codes,
+# notes that didn't match the expected pattern for their template, or
+# missing institution matches from Step 5. NA college_name is NOT a
+# review flag on its own — it's legitimately NA for anyone in
+# Working/Military/Other Pathway/Missing Data/Stopped Out/Intent to
+# Transfer categories.
+# STOPS the script rather than just warning — flagged rows represent
+# genuinely unresolved parsing/matching problems, and letting the script
+# continue to Part 6's export with them still unresolved risks writing
+# bad/incomplete data into the PSD. Matches the same stop()-on-genuine-
+# problem philosophy already used for the row count/cohort/column/
+# duplicate checks in Part 3.
+needs_review <- clean_data %>% filter(!is.na(review_flag))
+if (nrow(needs_review) > 0) {
+  stop(nrow(needs_review), " row(s) flagged for manual review — halting ",
+       "before export. Review and resolve each row's review_flag (see ",
+       "needs_review) before re-running this script:\n",
+       paste(capture.output(print(needs_review %>% count(template_code, review_flag))),
+             collapse = "\n"))
+}
 
-#note any remaining cases
-left_missing_df<-clean_data %>% filter(is.na(college_name))
+# 7. Row-count reconciliation: confirm every graduate from psd_missing_list
+# ended up EITHER excluded (S/T, captured in excluded_records) OR present
+# in clean_data with at least one row — never silently dropped for some
+# other reason. This doesn't predict exact row counts (multi-row templates
+# like R/hedge and continued-enrollment A/I make that combinatorial), but
+# it does guarantee no graduate vanishes without a trace — exactly the
+# kind of thing a dropped line (like the matched_name/college_name bugs
+# we already hit twice) could otherwise cause silently.
+all_input_ids <- unique(psd_missing_list$psd_id)
+accounted_ids <- unique(c(clean_data$psd_id, excluded_records$psd_id))
+unaccounted_ids <- setdiff(all_input_ids, accounted_ids)
+
+if (length(unaccounted_ids) > 0) {
+  stop(length(unaccounted_ids), " psd_id(s) went into Part 5 but never ",
+       "appeared in clean_data OR excluded_records — investigate before ",
+       "continuing:\n", paste(unaccounted_ids, collapse = ", "))
+}
+
+# 8. Final duplicate check on clean_data's OUTPUT — confirm no psd_id ends
+# up with two rows sharing the same record_term + record_year, which
+# would indicate an unexpected collision (e.g., two different templates
+# both landing on the same term for the same graduate) rather than a
+# legitimate multi-row expansion.
+output_dup_check <- clean_data %>%
+  filter(!is.na(record_term), !is.na(record_year)) %>%
+  count(psd_id, record_term, record_year) %>%
+  filter(n > 1)
+
+if (nrow(output_dup_check) > 0) {
+  stop(nrow(output_dup_check), " psd_id(s) have duplicate record_term + ",
+       "record_year combinations in clean_data — review before ",
+       "continuing:\n",
+       paste(capture.output(print(output_dup_check)), collapse = "\n"))
+}
+
+check <- clean_data %>%
+  left_join(template_lookup %>% select(template_code, category), by = "template_code") %>%
+  count(he_graduated, category, template_code)
 
 ## -----------------------------------------------------------------------------
-## Part 3 - Save and Export Files
+## Part 6 - Finalize Clean Data for the Merge Script
 ## -----------------------------------------------------------------------------
 
-# write.csv(left_missing_df, 
-#           file.path(box_file_dir,"Postsecondary Database",
-#                     "UCLA Community School PSD", "UCLACS Follow Up",
-#                     "unknown_cases_jy.csv"))
+# 1. Finalize clean_data for export: standardize casing to match NSC's own
+# ALL-CAPS convention on free-text fields, and reorder/select down to
+# exactly the real PSD's 34 columns.
 
-#write.csv(data.frame(colnames(psd_merge_list)), "col_list.csv")
+# name_suffix is an NSC-only field, never populated by follow-up templates
+# (same category as enrollment_status/record_found/req_return_field) — not
+# present in master_stu_list, so it needs to be added as NA here, same as
+# the other NSC-only fields Part 4 already sets to NA.
+if (!"name_suffix" %in% names(clean_data)) {
+  clean_data$name_suffix <- NA_character_
+}
 
-write.csv(clean_data, 
-          file.path(box_file_dir,"Postsecondary Database",
-                    "UCLA Community School PSD", "UCLACS Follow Up",
-                    "missing_list_jy_draft.csv"))
+# enrollment_status is NSC-only — always NA for follow-up-derived records,
+# never populated by any template (matches the guide's existing convention
+# for coll_grad_date/enrollment_begin/enrollment_end).
+clean_data$enrollment_status <- NA
 
-# write.csv(previous_term, 
-#           file.path(box_file_dir,"Postsecondary Database",
-#                     "UCLA Community School PSD", "UCLACS Follow Up",
-#                     "previous_term_jy.csv"))
+# Uppercase free-text fields to match NSC's own ALL-CAPS convention.
+# Excludes: record_term/status_source (lowercase conventions the pipeline's
+# own logic depends on), psd_id/student_id/college_code (identifiers, not
+# free text), and system_type/public_private/cc_4year/college_state (left
+# exactly as institution_lookup.csv has them, since that's the
+# authoritative reference, not something this script should reformat).
+uppercase_cols <- c("degree_title", "major", "program_code", "gender",
+                    "race_ethnicity", "poverty_indicator", "hs_diploma",
+                    "first_name", "middle_name", "last_name")
+
+clean_data <- clean_data %>%
+  mutate(across(all_of(uppercase_cols), str_to_upper))
+
+# Reorder/select down to exactly the real PSD's 34 columns, dropping
+# working-only columns (cohort, template_code, final_follow_up_note,
+# review_flag) that aren't part of the PSD schema at all.
+psd_column_order <- c(
+  "student_id", "first_name", "middle_name", "last_name", "name_suffix",
+  "record_found", "req_return_field", "high_school_code", "hs_grad_date",
+  "college_code", "college_name", "college_state", "cc_4year", "public_private",
+  "enrollment_begin", "enrollment_end", "enrollment_status", "he_graduated",
+  "coll_grad_date", "degree_title", "major", "college_sequence", "program_code",
+  "status_source", "record_year", "record_term", "system_type", "hs_grad_year",
+  "gender", "race_ethnicity", "poverty_indicator", "hs_diploma", "notes", "psd_id"
+)
+
+clean_data <- clean_data %>%
+  select(all_of(psd_column_order))
+
+## -----------------------------------------------------------------------------
+## Part 7 - Export Files
+## -----------------------------------------------------------------------------
+
+# 1. Export clean_data — script 04's final PSD-ready output. This is NOT
+# bound to the existing PSD here; that's the separate merge script's job
+# (per the tracking_status/stop-tracking redesign), which reads this file
+# alongside the existing PSD and script 02's stop-tracking export.
+write.csv(clean_data,
+          file.path(box_file_dir,
+                    "College and Career RPP",
+                    "1. NSC Dataset",
+                    school_site,
+                    school_site_psd_folder,
+                    "Missing List - Cleaned",
+                    followup_clean_filename),
+          row.names = FALSE)
+
+# 2. Export excluded_records — the audit trail for S/T (Duplicate/
+# Superseded) rows dropped from clean_data in Part 5 Step 2. Previously
+# computed but never written to disk, meaning the record of WHY each row
+# was excluded vanished the moment the R session ended. Not read by the
+# merge script (these rows are intentionally excluded from the PSD) —
+# this is purely a human-readable audit companion to clean_data.
+write.csv(excluded_records,
+          file.path(box_file_dir,
+                    "College and Career RPP",
+                    "1. NSC Dataset",
+                    school_site,
+                    school_site_psd_folder,
+                    "Missing List - Cleaned",
+                    excluded_records_filename),
+          row.names = FALSE)
 
 ## -----------------------------------------------------------------------------
 ## END SCRIPT
