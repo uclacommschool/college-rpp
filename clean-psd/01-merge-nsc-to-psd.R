@@ -47,7 +47,7 @@ if (.Platform$OS.type == "windows") {
 #functions to clean and create the NSC data with the existing PSD data.
 
 #use "source" function to run the script: 
-source(file.path("psd_rfk_function_list.R"))
+source(file.path("psd_core_function_list.R"))
 
 ## -----------------------------------------------------------------------------
 ## UPDATE EACH RUN - checklist
