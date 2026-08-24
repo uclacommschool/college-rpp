@@ -3,7 +3,7 @@
 ## [ PROJ ] < Community School Postsecondary Database >
 ## [ FILE ] < 04-clean-missing-list.R >
 ## [ AUTH ] < Jeffrey Yo >
-## [ INIT ] < 9/3/25, updated 08/19/2026 Ariana Dimagiba >
+## [ INIT ] < 9/3/25, updated 08/24/2026 Ariana Dimagiba >
 ##
 ################################################################################
 
@@ -28,7 +28,7 @@
 ## 2. Build the new merge script (does not exist yet). Per the
 ##    tracking_status/stop-tracking redesign, it should:
 ##    - read the existing PSD
-##    - read 04's cleaned output from "Missing List - Cleaned"
+##    - read 04's cleaned output from "Missing List - Clean"
 ##      (followup_clean_filename, this script's Part 7 export)
 ##    - read 02's stop-tracking export from "Stop Tracking"
 ##    - standardize schemas/column classes, bind_rows(), validate, export
@@ -98,8 +98,8 @@ excluded_records_filename <- "20260818-rfk-excluded-records-dimagiba.csv"
 # NSC's mixed historical date formats) — don't wrap in as.Date().
 manual_hs_grad_dates <- tibble::tribble(
   ~hs_grad_year, ~hs_grad_date,
-  2025,          "2025-06-09",
-  2026,          "2026-06-09"
+  2025,          as.Date("2025-06-09"),
+  2026,          as.Date("2026-06-18")
 )
 
 ## ---------------------------
@@ -124,7 +124,7 @@ if (.Platform$OS.type == "windows") {
 
 # set snapshot file path to the WORKING copy of the Postsecondary Paths Follow Up List.
 # ⚠️ Folder reorganization (per stop-tracking/tracking_status redesign):
-# "Missing List - Cleaned" now holds THIS script's cleaned, PSD-ready
+# "Missing List - Clean" now holds THIS script's cleaned, PSD-ready
 # OUTPUT (Part 7) — the school-facing WORKING file this script READS
 # moved to "Missing List - External" instead. No academic-year subfolder
 # — flat structure, per team decision.
@@ -137,8 +137,11 @@ missing_list_snapshot <- file.path(box_file_dir,
                                    working_list_filename)
 
 ## ---------------------------
-## load lookup tables and helper functions
+## load helper functions and lookup tables 
 ## ---------------------------
+# load helper functions 
+source(file.path("psd_core_function_list.R"))
+source(file.path("clean_missing_list_function_list.R"))
 
 # load institution lookup reference table - one row per college/institution
 institution_lookup <- read_csv(file.path(box_file_dir,
@@ -172,6 +175,26 @@ previous_psd <- read_csv(file.path(box_file_dir,
                                    school_site_psd_folder,
                                    previous_psd_filename))
 
+#parse dates from previous_psd to ensure dates across files are normalized
+previous_psd <- previous_psd %>% parse_dates()
+
+# Validation Check: capture a before-count of non-missing hs_grad_date values to 
+# confirm none of the values silently became NA after parse_dates() runs below.
+n_hs_grad_date_before <- previous_psd %>% filter(!is.na(hs_grad_date)) %>% nrow()
+
+previous_psd <- previous_psd %>% parse_dates()
+
+n_hs_grad_date_after <- previous_psd %>% filter(!is.na(hs_grad_date)) %>% nrow()
+
+if (n_hs_grad_date_after < n_hs_grad_date_before) {
+  warning(n_hs_grad_date_before - n_hs_grad_date_after, " hs_grad_date ",
+          "value(s) failed to parse with any known format (YYYYMMDD, ",
+          "M/D/YY, YYYY-MM-DD, M/D/YY H:MM) and became NA — a new, ",
+          "unhandled date format may exist. Investigate before trusting ",
+          "hs_grad_date_lookup below.")
+}
+
+# Derive one hs_grad_date per cohort year via mode — a cohort-level fact, not a per-student one
 hs_grad_date_lookup <- previous_psd %>%
   filter(!is.na(hs_grad_date), !is.na(hs_grad_year)) %>%
   count(hs_grad_year, hs_grad_date, sort = TRUE) %>%
@@ -180,32 +203,18 @@ hs_grad_date_lookup <- previous_psd %>%
   ungroup() %>%
   select(hs_grad_year, hs_grad_date)
 
-# Fill in manually-entered dates for any cohort not yet reflected in
-# previous_psd (see CONFIG's manual_hs_grad_dates). Only added for years
-# NOT already present from previous_psd (a gap-fill, not an override) —
-# once a cohort has gone through at least one real PSD merge, the derived
-# value takes over automatically and its manual entry becomes a no-op.
+# Fill in manually-entered dates for any cohort not yet reflected in previous_psd 
 hs_grad_date_lookup <- hs_grad_date_lookup %>%
   bind_rows(
     manual_hs_grad_dates %>% filter(!hs_grad_year %in% hs_grad_date_lookup$hs_grad_year)
   )
 
+# Validation check for duplicates dates
 dup_grad_date <- hs_grad_date_lookup %>% count(hs_grad_year) %>% filter(n > 1)
 if (nrow(dup_grad_date) > 0) {
   warning(nrow(dup_grad_date), " hs_grad_year(s) still have ambiguous ",
           "hs_grad_date after taking the mode — verify before continuing.")
 }
-
-# --- supporting functions ---------------------------------------------------
-# institution matching (institution_aliases, match_institution()), the note-
-# template system (template_lookup, parse_final_note()), the per-tab cleaning
-# function (standardize_tab(), target_columns), and the core per-graduate
-# transformation (split_term_year(), expand_graduate_row()) all live in a
-# separate helper script, matching the pattern already established by
-# psd_rfk_function_list.R for 01-merge-nsc-to-psd.R. Sourced here after
-# institution_lookup is loaded above, since match_institution() references it.
-source(file.path("clean_missing_list_function_list.R"))
-
 
 ## -----------------------------------------------------------------------------
 ## Part 1 - Read in WORKING_Postsecondary Path Follow Up List
@@ -618,7 +627,7 @@ write.csv(clean_data,
                     "1. NSC Dataset",
                     school_site,
                     school_site_psd_folder,
-                    "Missing List - Cleaned",
+                    "Missing List - Clean",
                     followup_clean_filename),
           row.names = FALSE)
 
@@ -634,7 +643,7 @@ write.csv(excluded_records,
                     "1. NSC Dataset",
                     school_site,
                     school_site_psd_folder,
-                    "Missing List - Cleaned",
+                    "Missing List - Clean",
                     excluded_records_filename),
           row.names = FALSE)
 
