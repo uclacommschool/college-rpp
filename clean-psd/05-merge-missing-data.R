@@ -1,20 +1,16 @@
 ################################################################################
 ##
 ## [ PROJ ] < Community School Postsecondary Database >
-## [ FILE ] < 02-merge-missing-data.R >
-## [ AUTH ] < Jeffrey Yo >
-## [ INIT ] < 9/4/25 >
+## [ FILE ] < 05-merge-missing-data.R >
+## [ AUTH ] < Ariana Dimagiba >
+## [ INIT ] < 08/20/2026 >
 ##
 ################################################################################
 
-#Goal: Add the cleaned missing data into the PSD.
-
-#Script will add these 3 datasets together:
-
-#1.The cleaned missing list.
-#2.The Missing List containing all the "Stop Tracking Folks"
-#3.The 2024 Missing List Ariana already cleaned.
-#4.The existing PSD.
+# Goal: Merge the existing PSD, script 04's cleaned follow-up output, and script 
+# 02's stop-tracking output into a single new PSD snapshot. This script reads all PSD-shaped
+# inputs, standardizes schemes, validates (pre-bind and post-bind), binds, and
+# exports a new dated PSD snapshot.
 
 ################################################################################
 
@@ -22,259 +18,257 @@
 ## libraries
 ## ---------------------------
 library(tidyverse)
-library(readxl)
-library(googlesheets4)
+library(readr)
 library(janitor)
-library(data.table)
-library(lubridate)
 
 ## ---------------------------
 ## directory paths
 ## ---------------------------
 
-#see current directory
-getwd()
-
-#set current directory
-code_file_dir<-file.path(".")
+code_file_dir<-file.path(".", "clean-psd")
 
 data_file_dir<-file.path("..","..")
 
-box_file_dir<-file.path(Sys.getenv("HOME"), "Library", "CloudStorage", "Box-Box", "College Data")
+# Detect OS and set Box path accordingly
+if (.Platform$OS.type == "windows") {
+  box_file_dir <- file.path(Sys.getenv("USERPROFILE"), "Box")
+} else {
+  # Box Drive syncs via CloudStorage on Mac
+  box_file_dir <- file.path(Sys.getenv("HOME"), "Library", "CloudStorage", "Box-Box")
+}
 
 ## ---------------------------
-## helper functions
+## ⚠️ CONFIG — everything that changes per run lives here. Update this
+## block only; nothing below should need touching for a routine new pull.
 ## ---------------------------
 
+# ⚠️ UPDATE: school site folder name and PSD folder name
+school_site <- "RFK"
+school_site_psd_folder <- "RFK PSD"
+
+# ⚠️ UPDATE: most recent PSD file name (dated per export, e.g. from 01-merge)
+current_psd_filename <- "20260818-rfk-psd-dimagiba.csv"
+
+# ⚠️ UPDATE: most recent clean follow up list file name
+followup_clean_filename <- "20260818-rfk-followup-clean-dimagiba.csv"
+
+# ⚠️ UPDATE: most recent stop tracking list file namme
+stop_track_filename <- "20260820-rfk-stopTrack-dimagiba.csv"
+
+# ⚠️ UPDATE: this run's output filenames (dated per export)
+output_psd_filename <- "20260824-rfk-psd-dimagiba.csv"
 
 ## ---------------------------
-## load & inspect data
+## load shared helper functions
+## ---------------------------
+# Provides assign_columns_classes() and parse_dates() the clean-psd pipeline
+# authoritative schema-enforcement functions applied in Part 2. 
+source(file.path("psd_core_function_list.R"))
+
+## ---------------------------
+## Part 1 - Load all three data sources
 ## ---------------------------
 
-#The 2024 Missing List Ariana already cleaned.
-psd_missing_24_ariana<-read_excel(file.path(box_file_dir,"Postsecondary Database",
-                            "UCLA Community School PSD", "UCLACS Follow Up",
-                            "2024-2025","psd_missing merge_april2025_dimagiba.xlsx"))
+# 1. Load existing PSD - the PSD with NSC records from the November NSC report, 
+# that does not have follow-up records from this current cycle,
+previous_psd<-read_csv(file.path(box_file_dir,
+                                 "College and Career RPP",
+                                 "1. NSC Dataset",
+                                 school_site,
+                                 school_site_psd_folder,
+                                 current_psd_filename))
+
+# tracking_status is a new field (per stop-track redesign) the existing psd file 
+# may not have this column yet. 
+if (!"tracking_status" %in% names(previous_psd)) {
+  previous_psd$tracking_status <- NA_character_
+}
 
 
-#PSD
-psd<-read_excel(file.path(box_file_dir,"Postsecondary Database",
-                                     "UCLA Community School PSD", 
-                                     "29aug2025-psd-dimagiba.xlsx"))
+# 2. Load cleaned follow up output 
+followup_clean <-read_csv(file.path(box_file_dir,
+                                 "College and Career RPP",
+                                 "1. NSC Dataset",
+                                 school_site,
+                                 school_site_psd_folder,
+                                 "Missing List - Clean",
+                                 followup_clean_filename))
 
-#The Missing List containing all the "Stop Tracking Folks"
-psd_stop_track_missing<-read_excel(file.path(box_file_dir,"Postsecondary Database",
-                                             "UCLA Community School PSD", "UCLACS Follow Up",
-                                             "2024-2025","missing_april2025_dimagiba.xlsx"))
-
-#cleaned_missing
-psd_missing<-fread(file.path(box_file_dir,"Postsecondary Database",
-                    "UCLA Community School PSD", "UCLACS Follow Up",
-                    "missing_list_jy_draft_ad_edits.csv"))
-
-## -----------------------------------------------------------------------------
-## Part 1 - Clean the clean_missing file
-## -----------------------------------------------------------------------------
-
-#remove unnecessary variables
-psd_missing<-psd_missing %>% 
-  select(-c(V1,cohort, first_name_sm,last_name_sm,
-  ariana_notes, college_enrollment_or_career_vocation,
-  teacher_college_counselor, notes_sm, college_code_sch,
-  college_state_sch, cc_4year_sch, public_private_sch,system_type_sch))
-
-#check
-colnames(psd_missing) == colnames(psd)
-
-#filter out Class of 2024
-psd_missing<-psd_missing %>% filter(hs_grad_year != "2024")
-
-#clean dates for coll_grad_date
-psd_missing <-psd_missing %>% mutate(coll_grad_date = mdy(coll_grad_date))
+# 3. Load stop-tracking output
+stop_track<-read_csv(file.path(box_file_dir,
+                                "College and Career RPP",
+                                 "1. NSC Dataset",
+                                 school_site,
+                                 school_site_psd_folder,
+                                 "Stop Tracking",
+                                 stop_track_filename))
 
 ## -----------------------------------------------------------------------------
-## Part 1.2 - Clean the stop track students list
+## Part 2 - Standardize Schema
 ## -----------------------------------------------------------------------------
 
-psd_stop_track_missing<-clean_names(psd_stop_track_missing)
+# Apply the pipeline's authoritative schema functions to ALL THREE
+# sources — not just previous_psd. Before Part 3's validation and Part 4's bind, means every
+# downstream check and the bind itself can trust a consistent schema
+# across all three, rather than discovering a mismatch mid-bind.
 
-#keep only 2025 stop track cases
-psd_stop_track_missing<-psd_stop_track_missing %>% 
-  filter(ariana_notes == "2025 stop track"|college_enrollment=="2025 stop track"|
-           source == "2025 stop track"|source_note == "2025 stop track")
-
-psd_stop_track_missing<-psd_stop_track_missing %>% 
-  mutate(hs_grad_year = as.character(hs_grad_year))
-
-#check
-check<-psd_stop_track_missing %>% 
-  count(ariana_notes, college_enrollment, source,source_note)
-
-
-#create a psd_template
-psd_temp<-psd %>% filter(psd_id %in% psd_stop_track_missing$psd_id)
-
-psd_temp<-psd_temp %>% full_join(psd_stop_track_missing,
-                             by = c("student_id", "psd_id",
-                                    "first_name", "middle_name",
-                                    "last_name", "hs_grad_year",
-                                    "hs_diploma", "record_found"))
-
-psd_temp<-psd_temp %>% filter(!is.na(ariana_notes))
-
-psd_temp<-psd_temp %>% select(colnames(psd))
-
-psd_temp<-psd_temp %>% 
-  mutate(across(c(name_suffix, record_found, req_return_field,
-                  high_school_code, college_state,enrollment_begin,
-                  enrollment_end, enrollment_status, he_graduated,
-                  coll_grad_date, degree_title, major,college_sequence,
-                  program_code), ~ NA))
+#' Standardize schema and check for silent date-parsing failures
+#'
+#' Runs assign_column_classes() and parse_dates() on a PSD source, then
+#' warns if any of the four date columns picked up new NAs it didn't have
+#' before parsing. Generalizes the hs_grad_date-specific NA-drift check
+#' from 04-clean-missing-list.R to all four date columns, across all
+#' three sources in this script — a new, unhandled date format slipping
+#' through would otherwise fail silently.
+#'
+#' @param df A PSD-shaped data frame (previous_psd, followup_clean, or
+#'   stop_track)
+#' @param df_name The name of df, used only to identify which source a
+#'   warning came from (passed automatically by imap() below via each
+#'   list element's name)
+#' @return df with correct column classes and parsed date columns
+check_and_parse_dates <- function(df, df_name) {
+  date_cols <- c("enrollment_begin", "enrollment_end", "coll_grad_date", "hs_grad_date")
   
-psd_temp<-psd_temp %>% 
-  mutate(
-    college_code = "MISSING DATA", college_name = "MISSING DATA",
-    cc_4year = "MISSING DATA", public_private = "MISSING DATA", 
-    status_source = "MISSING DATA",system_type = "MISSING DATA",
-    record_year = "2025", record_term = "fall", notes = "2025 stop track"
-  )
+  df <- df %>% assign_column_classes()
+  before_counts <- map_int(date_cols, ~ sum(!is.na(df[[.x]])))
+  df <- df %>% parse_dates()
+  after_counts <- map_int(date_cols, ~ sum(!is.na(df[[.x]])))
+  dropped <- before_counts - after_counts
+  
+  for (i in seq_along(date_cols)) {
+    if (dropped[i] > 0) {
+      warning(dropped[i], " ", date_cols[i], " value(s) in ", df_name,
+              " failed to parse with any known format and became NA — ",
+              "a new, unhandled date format may exist. Investigate ",
+              "before trusting downstream date logic.")
+    }
+  }
+  
+  df
+}
 
-psd_temp<-psd_temp %>% unique()
+psd_sources <- list(previous_psd = previous_psd,
+                    followup_clean = followup_clean,
+                    stop_track = stop_track)
 
-## -----------------------------------------------------------------------------
-## Part 2.1 - Merge all Data sources together
-## -----------------------------------------------------------------------------
+# imap() applies check_and_parse_dates() to each element AND passes along
+# each element's own NAME (previous_psd/followup_clean/stop_track) as the
+# df_name argument — that's how the warning above knows which source had
+# the problem, not just that "some date" failed somewhere.
+psd_sources <- imap(psd_sources, check_and_parse_dates)
 
-full_psd<-rbind(psd, psd_temp, psd_missing_24_ariana, psd_missing) 
-
-#clean full_psd
-
-## -----------------------------------------------------------------------------
-## Part 2.2 - Clean full_psd dataset
-## -----------------------------------------------------------------------------
-
-#test<-psd_merge_list %>% filter(record_term == "enrolled at anytime")
-
-#record_term values
-record_term_v<-data.frame(full_psd %>% count(record_term))
-
-full_psd<-full_psd %>%
-  mutate(record_term = case_when(
-    record_term %in% c(record_term_v$record_term[2],
-                       "enrolled at anytime",
-                       "enrolled at anytime after fall",
-                       record_term_v$record_term[5])  ~ "enrolled anytime after fall",
-    
-    record_term == "NA" ~ NA,
-    TRUE ~ record_term
-  ))
-
-#check
-full_psd %>% count(record_term)
-
-#change the order of this term (Note: this needs to change every term)
-full_psd$record_term <- factor(full_psd$record_term,
-                                     levels = c("NA", "plans", "winter", "spring", "summer", 
-                                                "enrolled anytime after fall", "fall"),
-                                     ordered = TRUE)
-
-full_psd$record_year <- factor(full_psd$record_year,
-                                     levels = c("NA", str_c(2012:2025)),
-                                     ordered = TRUE)
-
-#check
-test<-full_psd %>% arrange(record_term)
-
-
-#clean 
-sch_info_list<-full_psd %>% 
-  count(college_code, college_name,college_state,
-        cc_4year, public_private,system_type)
-
-full_psd<-full_psd %>% 
-  mutate(
-    college_code = case_when(
-      college_name == "CCC" ~ "CCC",
-      is.na(college_code) ~ "NA",
-      TRUE ~ college_code
-    ),
-    college_name = case_when(
-      college_name == "CALIFORNIA STATE UNIVERSITY - LOS ANGELE" ~ "CALIFORNIA STATE UNIVERSITY - LOS ANGELES",
-      college_name == "CALIFORNIA STATE UNIVERSITY - DOMINGUEZ" ~ "CALIFORNIA STATE UNIVERSITY - DOMINGUEZ HILLS",
-      college_name == "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, POMONA" ~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
-      college_name %in% c("CALIFORNIA STATE POLYTECHNIC UNIVERSITY - HUMBOLDT") ~"CALIFORNIA STATE POLYTECHNIC UNIVERSITY, HUMBOLDT",
-      college_name %in% c("CALIFORNIA STATE UNIVERSITY- NORTHRIDGE") ~"CALIFORNIA STATE UNIVERSITY - NORTHRIDGE",
-      college_name %in% c("MOUNT ST MARY'S COLLEGE","MOUNT ST MARY'S UNIVERSITY") ~"MOUNT SAINT MARY'S UNIVERSITY",
-      college_name %in% c("KALAMAZOO UNIVERSITY") ~"KALAMAZOO COLLEGE",
-      college_name %in% c("UNIVERSITY OF ALASKA ANCHORAGE") ~"UNIVERSITY OF ALASKA - ANCHORAGE",
-      college_code == "NO ENROLLMENT" ~ "NO ENROLLMENT",
-      is.na(college_name) ~"NA",
-      TRUE ~ college_name
-    ),
-    college_state = case_when(
-      college_name %in% c("CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
-                          "CALIFORNIA STATE UNIVERSITY - NORTHRIDGE") ~ "CA",
-      college_name %in% c("PRINCETON UNIVERSITY") ~ "NJ",
-      college_code %in% c("MISSING DATA") ~ "MISSING DATA",
-      college_code %in% c("NO ENROLLMENT") ~ "NO ENROLLMENT",
-      college_name %in% c("MAPUA INSTITUTE OF TECHNOLOGY") ~ "PHILIPPINES",
-      is.na(college_state) ~ "NA",
-      TRUE ~ college_state
-    ),
-    cc_4year = case_when(
-      college_name %in% c("CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
-                          "CALIFORNIA STATE UNIVERSITY - NORTHRIDGE") ~ "4-year",
-      college_name %in% c("GLENDALE COMMUNITY COLLEGE") ~ "2-year",
-      college_name %in% c("NO ENROLLMENT") ~ "NO ENROLLMENT",
-      is.na(cc_4year) ~ "NA",
-      TRUE ~ cc_4year
-    ),
-    public_private = case_when(
-      college_name %in% c("CALIFORNIA STATE UNIVERSITY - DOMINGUEZ HILLS",
-                          "CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
-                          "CALIFORNIA STATE UNIVERSITY - NORTHRIDGE") ~ "Public",
-      college_name %in% c("NO ENROLLMENT") ~ "NO ENROLLMENT",
-      is.na(public_private) ~ "NA",
-      TRUE ~ public_private
-    ),
-    system_type = case_when(
-      college_name %in% c("CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
-                          "CALIFORNIA STATE UNIVERSITY - LOS ANGELES",
-                          "CALIFORNIA STATE UNIVERSITY - NORTHRIDGE"
-      ) ~ "CSU",
-      college_name %in% c("UNIVERSITY OF CALIFORNIA-LOS ANGELES") ~ "UC",
-      college_name %in% c("KALAMAZOO COLLEGE") ~ "OUT_4YR",
-      college_name %in% c("POMONA COLLEGE", "NATIONAL UNIVERSITY") ~ "INP_NP",
-      college_name %in% c("NO ENROLLMENT") ~ "NO ENROLLMENT",
-      system_type %in% c("CHAFFEY COLLEGE", "LOS ANGELES HARBOR COLLEGE") ~ "CCC",
-      system_type %in% c("SAINT PAUL COLLEGE") ~ "OUT_CC",
-      is.na(system_type) ~ "NA",
-      TRUE ~ system_type
-    )
-  )
-
-#change the order of this term (Note: this needs to change every term)
-full_psd$record_term <- factor(full_psd$record_term,
-                                     levels = c("NA", "plans", "winter", "spring", "summer", 
-                                                "enrolled anytime after fall", "fall"),
-                                     ordered = TRUE)
-
-full_psd$record_year <- factor(full_psd$record_year,
-                                     levels = c("NA", str_c(2012:2025)),
-                                     ordered = TRUE)
-
-
-#arrange group
-full_psd<-full_psd %>% arrange(hs_grad_year, psd_id, record_year, record_term)
+# imap() returns a NEW list — it doesn't reach back out and update the
+# original standalone previous_psd/followup_clean/stop_track variables
+# that existed before they were bundled into psd_sources. Part 3's checks
+# and Part 4's bind_rows() below refer to those three variables directly
+# by name, not via psd_sources$..., so each corrected version needs to be
+# pulled back out of the list and reassigned to the plain variable name
+# the rest of the script actually expects.
+previous_psd <- psd_sources$previous_psd
+followup_clean <- psd_sources$followup_clean
+stop_track <- psd_sources$stop_track
 
 ## -----------------------------------------------------------------------------
-## Part 3 - Save and Export Files
+## Part 3 - Validate BEFORE Binding
 ## -----------------------------------------------------------------------------
 
-write.csv(full_psd, 
-          file.path(box_file_dir,"Postsecondary Database",
-                    "UCLA Community School PSD", 
-                    "5sept2025-psd-yo.csv"))
+# ⚠️ TODO (write these): per the stop-tracking redesign doc's
+# "Validation requirements", confirm the following BEFORE binding —
+# catching a problem here is much easier to trace than after everything
+# is merged into one dataset:
+#
+# 1. tracking_status contains only "active", "stopped", or NA across
+#      previous_psd, followup_clean, and stop_track combined — a closed
+#      list, per the redesign doc. Any other value should stop() the
+#      script.
+
+check_track<- bind_rows(previous_psd, followup_clean, stop_track) %>% 
+  filter(!tracking_status %in% c("active", "stopped", NA))
+if (nrow(check_track) > 0) {
+  stop(nrow(check_track),"VALIDATION FAILED: tracking_status contains rows with unresolved
+       values. Review before continuing.")
+}
+
+# 2. No psd_id appears in BOTH follow up_clean AND stop_track for this
+#      cycle — a student can't simultaneously be "actively followed up
+#      on" and "just stopped" in the same run. Any overlap should stop()
+#      the script.
+dup_check_psd_id <- intersect(followup_clean$psd_id, stop_track$psd_id)
+if (length(dup_check_psd_id) > 0) {
+  stop(nrow(dup_check_psd_id), "psd_id(s) appear more than once in followup_clean AND stop_track. 
+       Review whether student should be active or inactive tracking.")
+}
+
+# 3. Column names/classes must be compatible across all three sources
+# before attempting to bind — check_type_mismatch() (from
+# psd_core_function_list.R, already sourced above) is the same function
+# 01-merge-nsc-to-psd.R uses for this exact purpose. Returns 0 rows if
+# everything matches.
+schema_mismatch_check <- check_type_mismatch(
+  list(previous_psd, followup_clean, stop_track),
+  c("previous_psd", "followup_clean", "stop_track")
+)
+
+if (nrow(schema_mismatch_check) > 0) {
+  stop("VALIDATION FAILED: column class mismatch across sources — review ",
+       "before continuing:\n",
+       paste(capture.output(print(schema_mismatch_check)), collapse = "\n"))
+}
+## -----------------------------------------------------------------------------
+## Part 4 - Bind and Validate After Binding
+## -----------------------------------------------------------------------------
+
+# 1. Capture pre-bind counts for the row-count reconciliation check below.
+n_previous_psd <- nrow(previous_psd)
+n_followup_clean <- nrow(followup_clean)
+n_stop_track <- nrow(stop_track)
+
+# 2. Bind all three sources into the new PSD.
+new_psd <- bind_rows(previous_psd, followup_clean, stop_track)
+
+# 3. Row-count reconciliation — confirm the combined dataset's row count
+# exactly equals the sum of the three inputs. bind_rows() silently
+# succeeding is not the same as binding correctly; this catches a dropped
+# or duplicated row during the bind itself.
+n_expected <- n_previous_psd + n_followup_clean + n_stop_track
+n_actual <- nrow(new_psd)
+
+if (n_actual != n_expected) {
+  stop("VALIDATION FAILED: row count mismatch after bind_rows(). Expected ",
+       n_expected, " rows (", n_previous_psd, " previous_psd + ",
+       n_followup_clean, " followup_clean + ", n_stop_track,
+       " stop_track) but got ", n_actual, ". Investigate before continuing.")
+}
+
+# 4. Duplicate check on the COMBINED new_psd — confirm no psd_id has more than 
+# one row sharing the same record_term + record_year + he_graduated. 
+# This key (not just psd_id + record_term + record_year) is deliberate: 
+# a student can legitimately have both an enrollment record AND a graduation record 
+# in the same term/year (e.g. Fall 2025 enrollment confirmed, Fall 2025 also when 
+# their graduation was recorded) — he_graduated distinguishes which kind of fact each row
+# represents, so those two rows are NOT a duplicate. Two rows sharing all
+# four values WOULD be a genuine duplicate — the same fact recorded twice.
+dup_check_bind <- new_psd %>% count(psd_id, record_term, record_year, he_graduated) %>%
+  filter(n >1)
+if(nrow(dup_check_bind) > 0) {
+  stop(nrow(dup_check_bind),"VALIDATION FAILED: There are multiple records for psd_id(s). Review before
+       continuing.")
+}
+## -----------------------------------------------------------------------------
+## Part 5 - Export New PSD Snapshot
+## -----------------------------------------------------------------------------
+
+write.csv(new_psd,
+          file = file.path(box_file_dir,
+                           "College and Career RPP",
+                           "1. NSC Dataset",
+                           school_site,
+                           school_site_psd_folder,
+                           output_psd_filename),
+          row.names = FALSE)
+
+cat("✅ Export complete:", nrow(new_psd), "rows written.\n")
 
 ## -----------------------------------------------------------------------------
 ## END SCRIPT
