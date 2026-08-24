@@ -157,23 +157,31 @@ completion_milestone<-function(completion_date, hs_grad_year){
 ## load & inspect data
 ## ---------------------------
 
-psd<- fread(file.path(box_file_dir,
-                      "College and Career RPP",
-                      "1. NSC Dataset",
-                      #⚠️ UPDATE: change to school site
-                      "Mann",
-                      "Mann PSD",
-                      # ⚠️ UPDATE: change to most recent PSD file name
-                      "20260721-mann-psd-sanchez.csv"))
+psd_rfk<-file.path(box_file_dir,
+                   "College and Career RPP",
+                   "1. NSC Dataset",
+                   "RFK","RFK PSD",
+                   # UPDATE: change to most recent PSD file name
+                   "20250905-rfk-psd-yo.csv")
 
+psd_mann<-file.path(box_file_dir,
+                    "College and Career RPP",
+                    "1. NSC Dataset",
+                    #⚠️ UPDATE: change to school site
+                    "Mann",
+                    "Mann PSD",
+                    # ⚠️ UPDATE: change to most recent PSD file name
+                    "20260721-mann-psd-sanchez.csv")
 
-# psd_path<-file.path(box_file_dir,
-#                     "College and Career RPP",
-#                     "1. NSC Dataset",
-#                     "RFK",
-#                     "RFK PSD",
-#                     # UPDATE: change to most recent PSD file name
-#                     "20250905-rfk-psd-yo.csv")
+psd_demo<-file.path(box_file_dir,
+                    "College and Career RPP",
+                    "1. NSC Dataset",
+                    #⚠️ UPDATE: change to school site
+                    "Demo",
+                    # ⚠️ UPDATE: change to most recent PSD file name
+                    "demo_psd_synthetic.csv")
+
+psd<- fread(psd_demo)
 
 #cat(sprintf("Loaded %s rows, %s columns from %s\n", nrow(psd), ncol(psd), psd_path))
 

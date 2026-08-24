@@ -64,22 +64,30 @@ if (.Platform$OS.type == "windows") {
 
 #Same PSD snapshot as 01-calculate-outcomes.R -- update to match whichever
 #dated file you're reporting on.
-# psd_path<-file.path(box_file_dir,
-#                     "College and Career RPP",
-#                     "1. NSC Dataset",
-#                     "RFK",
-#                     "RFK PSD",
-#                     # UPDATE: change to most recent PSD file name
-#                     "20250905-rfk-psd-yo.csv")
 
-psd_path <- file.path(box_file_dir,
-                      "College and Career RPP",
-                      "1. NSC Dataset",
-                      #⚠️ UPDATE: change to school site
-                      "Mann",
-                      "Mann PSD",
-                      # ⚠️ UPDATE: change to most recent PSD file name
-                      "20260721-mann-psd-sanchez.csv")
+psd_rfk<-file.path(box_file_dir,
+                   "College and Career RPP",
+                   "1. NSC Dataset",
+                   "RFK","RFK PSD",
+                   # UPDATE: change to most recent PSD file name
+                   "20250905-rfk-psd-yo.csv")
+
+psd_mann<-file.path(box_file_dir,
+                    "College and Career RPP",
+                    "1. NSC Dataset",
+                    #⚠️ UPDATE: change to school site
+                    "Mann",
+                    "Mann PSD",
+                    # ⚠️ UPDATE: change to most recent PSD file name
+                    "20260721-mann-psd-sanchez.csv")
+
+psd_demo<-file.path(box_file_dir,
+                    "College and Career RPP",
+                    "1. NSC Dataset",
+                    #⚠️ UPDATE: change to school site
+                    "Demo",
+                    # ⚠️ UPDATE: change to most recent PSD file name
+                    "demo_psd_synthetic.csv")
 
 output_dir<-"/mnt/user-data/outputs"
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
@@ -175,7 +183,7 @@ term_rank<-c(fall = 1, winter = 2, spring = 3, summer = 4,
 ## Part 1 - Load PSD & run diagnostics (READ THIS OUTPUT BEFORE TRUSTING RESULTS)
 ## -----------------------------------------------------------------------------
 
-psd<-fread(psd_path)
+psd<-fread(psd_demo)
 
 cat("\n=== PSD COLUMN NAMES ===\n")
 print(colnames(psd))
