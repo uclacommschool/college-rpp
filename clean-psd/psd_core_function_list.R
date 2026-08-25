@@ -4,14 +4,9 @@
 ## [ FILE ] < psd_core_function_list.R >
 ## [ AUTH ] < Jeffrey Yo / yjeffrey77, updated 08/20/2026 aridimagiba >
 ##
-## Renamed from psd_rfk_function_list.R — nothing in this file is
-## site-specific (clean_names_nsc_data, add_student_id, add_psd_variables,
-## merge_nsc_master, parse_dates, assign_column_classes, check_type,
-## check_type_mismatch, check_person*, check_id are all general-purpose),
-## but it was sourced by scripts configured for multiple sites (RFK, Mann).
-## Name now reflects that this is the core, shared function library for
-## the whole PSD pipeline — expected to grow as cleaning logic gets more
-## nuanced, not scoped to any one site or script.
+## Renamed from psd_rfk_function_list.R.Name now reflects that this is the core, 
+## shared function library for the whole PSD pipeline — expected to grow as 
+## cleaning logic gets more nuanced, not scoped to any one site or script.
 ################################################################################
 
 #Goal: To have a Rscript that only contains the functions used to clean and
@@ -30,6 +25,15 @@
 
 ## -----------------------------------------------------------------------------
 # FUNCTIONS IN THIS FILE:
+# Part 0 - Guards/Assertions
+#   assert_row_count_stable()       — stops the script if a row-preserving
+#                                      transformation (e.g. a 1:1 join)
+#                                      unexpectedly changed row count
+#   assert_row_count_not_increased() — stops the script if a filtering join
+#                                      (e.g. inner_join) unexpectedly
+#                                      gained rows (drops are OK, gains
+#                                      mean a duplicate join key)
+#
 # Part 1 - NSC Data Cleaning
 #   clean_nsc_names()       — standardizes NSC column names
 #   add_student_id()        — extracts and adds student ID
@@ -48,6 +52,55 @@
 #   check_person_last()     — filter by last name
 #   check_id()              — filter by student ID
 ## -----------------------------------------------------------------------------
+
+## -----------------------------------------------------------------------------
+## Part 0 - Guards/Assertions
+## -----------------------------------------------------------------------------
+
+#' Assert a transformation didn't change row count
+#'
+#' Used after any step that should be row-preserving (e.g. a left_join
+#' meant to add columns, not rows). If row count changed, that almost
+#' always means a duplicate/NA join key on the right-hand table caused a
+#' many-to-many fan-out — the exact bug that inflated nsc_data from 4543
+#' to 5067 rows via institution_lookup and master_stu_df duplicates.
+#' Fails loudly with stop() rather than letting the inflated row count
+#' silently flow downstream into the merged PSD.
+#'
+#' @param before Row count captured immediately before the operation
+#' @param df Data frame immediately after the operation
+#' @param step_name Label identifying the step, used in the error message
+#' @return df, invisibly, so this can be chained/wrapped around an assignment
+assert_row_count_stable <- function(before, df, step_name) {
+  if (nrow(df) != before) {
+    stop("⚠️ Row count changed during ", step_name, ": ",
+         before, " → ", nrow(df),
+         ". This step should be row-preserving — check for a duplicate ",
+         "or NA join key on the right-hand table before proceeding.")
+  }
+  invisible(df)
+}
+
+#' Assert a transformation didn't INCREASE row count
+#'
+#' Looser variant of assert_row_count_stable() for steps where some row
+#' loss is expected/normal (e.g. an inner_join() that legitimately drops
+#' unmatched records), but any row GAIN still signals a many-to-many
+#' fan-out from a duplicate join key and should fail loudly.
+#'
+#' @param before Row count captured immediately before the operation
+#' @param df Data frame immediately after the operation
+#' @param step_name Label identifying the step, used in the error message
+#' @return df, invisibly
+assert_row_count_not_increased <- function(before, df, step_name) {
+  if (nrow(df) > before) {
+    stop("⚠️ Row count INCREASED during ", step_name, ": ",
+         before, " → ", nrow(df),
+         ". A join here should only ever drop unmatched rows, never add ",
+         "extras — check for a duplicate join key on the right-hand table.")
+  }
+  invisible(df)
+}
 
 ## -----------------------------------------------------------------------------
 ## Part 1 - NSC Data Cleaning
@@ -107,6 +160,24 @@ add_student_id<-function(nsc_data){
 # Called in 01-merge-nsc-to-psd.R, Part 1 step 5
 
 add_psd_variables<-function(nsc_data,institution_lookup){
+  n_in <- nrow(nsc_data)  # captured before the join, for the row-count guard below
+  
+  # Fix: institution_lookup can contain a duplicate/NA college_code (e.g.
+  # multiple rows with a blank code), which fans out the left_join below
+  # via dplyr's NA==NA matching. Dedupe before joining rather than
+  # silencing the warning with relationship="many-to-many", which hides
+  # the problem instead of preventing it. Coded and non-coded (NA-code)
+  # institutions are deduped separately so genuinely distinct non-coded
+  # colleges (e.g. foreign institutions with no NSC code) aren't collapsed
+  # into a single row and don't lose their own system_type.
+  institution_lookup_coded <- institution_lookup %>%
+    filter(!is.na(college_code)) %>%
+    distinct(college_code, .keep_all = TRUE)
+  
+  institution_lookup_uncoded <- institution_lookup %>%
+    filter(is.na(college_code)) %>%
+    distinct(college_name, .keep_all = TRUE)
+  
   nsc_data <- nsc_data %>%
     # status_source values:
     # NSC          — record confirmed by National Student Clearinghouse
@@ -124,10 +195,19 @@ add_psd_variables<-function(nsc_data,institution_lookup){
            enrollment_end_date = ymd(enrollment_end),
            coll_grad_date_date = ymd(coll_grad_date),
            hs_grad_date_date = ymd(hs_grad_date)) %>% 
-    #join institution (sys_type) attributes using college_code
-    left_join(institution_lookup %>% 
+    #join institution (sys_type) attributes using college_code — coded
+    #institutions match on college_code; uncoded (NA college_code)
+    #institutions fall back to matching on college_name instead, so
+    #distinct non-coded colleges keep their own system_type rather than
+    #all collapsing onto whichever one row survived a code-only dedupe
+    left_join(institution_lookup_coded %>% 
                 select(college_code,system_type),
               by = "college_code") %>% 
+    left_join(institution_lookup_uncoded %>%
+                select(college_name, system_type_by_name = system_type),
+              by = "college_name") %>%
+    mutate(system_type = coalesce(system_type, system_type_by_name)) %>%
+    select(-system_type_by_name) %>%
     select(student_id,first_name, middle_name, last_name, name_suffix, record_found, req_return_field, high_school_code,
            hs_grad_date_date, college_code, college_name, college_state, cc_4year, public_private,enrollment_begin_date,
            enrollment_end_date,enrollment_status, he_graduated, coll_grad_date_date,degree_title, major, college_sequence,
@@ -136,6 +216,14 @@ add_psd_variables<-function(nsc_data,institution_lookup){
            enrollment_begin = 'enrollment_begin_date',
            enrollment_end = 'enrollment_end_date',
            coll_grad_date = 'coll_grad_date_date')
+  
+  # Guard: the institution_lookup join above should always be row-preserving.
+  # If it isn't, a duplicate/NA college_code or college_name has crept back
+  # into institution_lookup — fail loudly here instead of letting an
+  # inflated nsc_data flow downstream (this is what caused the 4543 → 5067
+  # row-count bug previously).
+  nsc_data <- assert_row_count_stable(n_in, nsc_data, "add_psd_variables() institution join")
+  
   #add record_year 
   nsc_data <- nsc_data %>%
     mutate(enrollment_year=year(enrollment_begin)) #figure out enrollment year
@@ -195,9 +283,19 @@ add_psd_variables<-function(nsc_data,institution_lookup){
 # Called in 01-merge-nsc-to-psd.R, Part 2 step 2
 
 merge_nsc_master<-function(nsc_data, master_data){
+  n_in <- nrow(nsc_data)  # captured before the join, for the row-count guard below
+  
   # psd with student demos----
   merge_data<- inner_join(nsc_data, master_data,  by = "student_id") %>%
     relocate(psd_id, .after = last_col())
+  
+  # Guard: inner_join() here is expected to DROP unmatched rows (e.g. NSC
+  # records with no master list match), so an exact row-count match isn't
+  # required — but any INCREASE means a duplicate/NA student_id fan-out on
+  # the master_data side, which is what caused the 4543 → 5067 bug
+  # previously. Fail loudly instead of silently inflating the merge.
+  merge_data <- assert_row_count_not_increased(n_in, merge_data, "merge_nsc_master()")
+  
   return(merge_data)
 }
 
