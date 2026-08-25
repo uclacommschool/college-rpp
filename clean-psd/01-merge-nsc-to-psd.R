@@ -79,7 +79,7 @@ master_list_filename <- "master-student-list-rfk-2012-2025.csv"
 previous_psd_filename <- "20260824-rfk-psd-dimagiba.csv"
 
 # ⚠️ UPDATE: this run's output filename (dated per export), following the
-# convention "YYYYMMDD-schoolsitename-psd-authorlastname"
+# convention "YYYYMMDD-schoolsitename-psd-authorlastname.csv"
 output_psd_filename <- "20260825-rfk-psd-dimagiba.csv"
 
 ## -----------------------------------------------------------------------------
@@ -239,10 +239,8 @@ master_stu_list %>%
 # Flags NA years, or years outside the plausible range (tracking runs back
 # to 2012 per program history; can't legitimately be later than this year).
 current_year <- as.integer(format(Sys.Date(), "%Y"))
-
 bad_years <- master_stu_list %>%
   filter(is.na(hs_grad_year) | hs_grad_year < 2012 | hs_grad_year > current_year)
-
 if (nrow(bad_years) > 0) {
   stop("⚠️ master_stu_list has invalid hs_grad_year value(s): ",
        paste(sort(unique(bad_years$hs_grad_year)), collapse = ", "),
@@ -287,7 +285,6 @@ master_stu_df <- master_stu_list %>% mutate(
 # than letting them fan-out into the merge.
 master_stu_na <- master_stu_df %>% filter(is.na(student_id))
 master_stu_df <- master_stu_df %>% filter(!is.na(student_id))
-
 if (nrow(master_stu_na) > 0) {
   cat("⚠️  ", nrow(master_stu_na), " master list row(s) have no student_id — ",
       "excluded from merge, review separately.\n", sep = "")
@@ -358,15 +355,22 @@ psd_data <- assign_column_classes(psd_data)
 # 3. Parse dates columns to Date class
 psd_data<- parse_dates(psd_data)
 
-# Compute this run's enrollment/graduation date filter boundaries
-# automatically — a fixed, mechanical rule, not something a person needs
-# to read off and retype into CONFIG each run:
+# Compute this run's expected enrollment/graduation date boundaries
+# automatically — NOT used to determine which NSC records get included
+# (that's presence-based matching in Part 5: does this exact
+# student+college+date already exist in psd_data?). These boundaries
+# feed only an informational lag summary in Part 5 (how many new records
+# predate the window — expected, normal NSC reporting lag for this
+# dataset, not something requiring individual review). The actual
+# duplicate-risk check in Part 5 (near-duplicate detection) doesn't use
+# these boundaries at all — it compares each new record directly against
+# psd_data's existing dates instead.
 #   start = day after the latest value already in previous_psd
 #   end   = latest value found in THIS NSC pull
 # max(..., na.rm = TRUE) on an all-NA column (e.g. a brand-new
 # previous_psd with no dates yet) silently returns -Inf rather than
 # erroring — checked explicitly below so that case stops the script with
-# a clear message instead of producing a nonsensical filter range.
+# a clear message instead of producing a nonsensical boundary.
 enrollment_filter_start <- max(psd_data$enrollment_begin, na.rm = TRUE) + 1
 enrollment_filter_end <- max(nsc_data$enrollment_begin, na.rm = TRUE)
 grad_filter_start <- max(psd_data$coll_grad_date, na.rm = TRUE) + 1
@@ -395,20 +399,103 @@ cat("  graduation:", format(grad_filter_start, "%Y-%m-%d"), "to",
 ## -----------------------------------------------------------------------------
 
 # 1. Create smaller dataframe with NEW college enrollment records
-# Filters to NEW enrollment records only — avoids duplicating records
-# already in previous_psd. enrollment_filter_start/end computed
-# automatically above.
-nsc_enrollment_data <- nsc_data %>% 
-  filter(between(enrollment_begin, enrollment_filter_start, enrollment_filter_end))
+# Presence-based check (not date-range) — matches on student_id +
+# college_code + enrollment_begin, the exact triplet identifying one
+# specific enrollment event. Chosen over date-range filtering after
+# discovering NSC reporting lag: a college can report an enrollment to
+# NSC months after it actually began, meaning a record's enrollment_begin
+# can be "old" (falling outside a fresh pull's expected window) while
+# still being genuinely new to the PSD — a date-range filter would
+# silently drop it, assuming it was already captured when it never was.
+# Checking direct presence in psd_data sidesteps that entirely — timing
+# no longer matters, only whether this exact event has already been
+# recorded. !is.na() guards preserve the original filter's implicit
+# behavior of excluding no-enrollment/no-graduation rows (record_found ==
+# "N" rows have enrollment_begin == NA and would otherwise slip through
+# an anti_join, since NA doesn't "match" anything to exclude on).
+already_captured_enrollment <- psd_data %>%
+  filter(!is.na(enrollment_begin)) %>%
+  select(student_id, college_code, enrollment_begin) %>%
+  distinct()
+
+nsc_enrollment_data <- nsc_data %>%
+  filter(!is.na(enrollment_begin)) %>%
+  anti_join(already_captured_enrollment,
+            by = c("student_id", "college_code", "enrollment_begin"))
 
 # 2. Create smaller dataframe with NEW college graduation records
-# Filters to NEW graduation records only — avoids duplicating records
-# already in previous_psd. grad_filter_start/end computed automatically
-# above.
-nsc_grads_data <- nsc_data %>% 
-  filter(between(coll_grad_date, grad_filter_start, grad_filter_end))
+# Presence-based approach, matching on student_id + college_code +
+# coll_grad_date + degree_title (NOT just the first three, unlike
+# enrollment above). degree_title is required here: a student earning
+# two degrees on the same date at the same institution (e.g. a double
+# major — "BACHELOR OF ARTS - ASIAN AMERICAN STUDIES" and "BACHELOR OF
+# SCIENCE - BIOLOGY") produces two real NSC records sharing an identical
+# student_id + college_code + coll_grad_date — the 3-field key used for
+# enrollment would incorrectly treat the second degree as "already
+# captured" and silently drop it. degree_title is a compound field
+# (degree type AND field of study together), so two simultaneous
+# different degrees always produce two different degree_title strings,
+# correctly keeping both.
+already_captured_grad <- psd_data %>%
+  filter(!is.na(coll_grad_date)) %>%
+  select(student_id, college_code, coll_grad_date, degree_title) %>%
+  distinct()
 
-# 3. Confirm all data frames have the same 34 variable columns and class types
+nsc_grads_data <- nsc_data %>%
+  filter(!is.na(coll_grad_date)) %>%
+  anti_join(already_captured_grad,
+            by = c("student_id", "college_code", "coll_grad_date", "degree_title"))
+
+# 3. Near-duplicate check (ENROLLMENT ONLY — see NOTE below for why
+# graduation doesn't get an equivalent check). For each genuinely new
+# enrollment record (already confirmed not an EXACT duplicate via the
+# anti_join above), check whether an existing record for the same
+# student_id + college_code sits suspiciously close (< 30 days) in
+# psd_data. A near-duplicate can mean NSC re-reported the same
+# enrollment with a slightly revised date — worth a human's direct
+# review, since the exact-match anti_join above can't recognize these as
+# duplicates on its own.
+enrollment_near_dupes <- nsc_enrollment_data %>%
+  select(student_id, college_code, enrollment_begin) %>%
+  inner_join(
+    psd_data %>%
+      filter(!is.na(enrollment_begin)) %>%
+      select(student_id, college_code, existing_enrollment_begin = enrollment_begin),
+    by = c("student_id", "college_code"),
+    relationship = "many-to-many"
+  ) %>%
+  mutate(days_apart = abs(as.numeric(enrollment_begin - existing_enrollment_begin))) %>%
+  group_by(student_id, college_code, enrollment_begin) %>%
+  summarize(closest_existing_date = existing_enrollment_begin[which.min(days_apart)],
+            days_apart = min(days_apart), .groups = "drop") %>%
+  filter(days_apart < 30)
+
+if (nrow(enrollment_near_dupes) > 0) {
+  cat("\n⚠️  ", nrow(enrollment_near_dupes), " new enrollment record(s) sit within ",
+      "30 days of an existing record for the same student+college — review each ",
+      "before trusting they're genuinely distinct terms, not a re-reported date ",
+      "for the same enrollment:\n", sep = "")
+  print(enrollment_near_dupes)
+}
+
+# 4. Lag summary (informational only, NOT a per-record warning) —
+# counts new records whose date is well before this run's expected
+# window, consistent with normal NSC reporting lag (a college reporting
+# an enrollment/graduation months or years after it actually happened).
+# Not flagged individually since the near-duplicate check above already
+# covers the actual risk worth reviewing (a record suspiciously CLOSE to
+# an existing one) — an old-but-distant date on its own isn't something
+# to review, just useful context on how much lag this run reflects.
+n_enrollment_lagged <- sum(nsc_enrollment_data$enrollment_begin < enrollment_filter_start, na.rm = TRUE)
+n_grad_lagged <- sum(nsc_grads_data$coll_grad_date < grad_filter_start, na.rm = TRUE)
+
+cat("\nLag summary (informational only):\n")
+cat("  ", n_enrollment_lagged, " new enrollment record(s) predate this run's ",
+    "expected window (normal NSC reporting lag)\n", sep = "")
+cat("  ", n_grad_lagged, " new graduation record(s) predate this run's expected ",
+    "window (normal NSC reporting lag)\n", sep = "")
+
+# 5. Confirm all data frames have the same 34 variable columns and class types
 # Check column names match across all three data frames
 
 stopifnot(
@@ -419,14 +506,14 @@ stopifnot(
 )
 
 
-# 4. Check class types match across all three data frames
+# 6. Check class types match across all three data frames
 check_type(list(nsc_enrollment_data, nsc_grads_data, psd_data),
            c("nsc_enrollment", "nsc_grads", "psd"))
 
 check_type_mismatch(list(nsc_enrollment_data, nsc_grads_data, psd_data),
                     c("nsc_enrollment", "nsc_grads", "psd"))
 
-# 5. Bind to enrollment and graduation records to most up-to-date PSD 
+# 7. Bind to enrollment and graduation records to most up-to-date PSD 
 
 current_psd<-bind_rows(
   psd = psd_data,
@@ -439,11 +526,11 @@ if (nrow(current_psd) < nrow(psd_data)) {
   stop("⚠️ current_psd has fewer rows than previous PSD — something went wrong in binding")
 }
 
-# 6. Sort by consistency and readability ----
+# 8. Sort by consistency and readability ----
 current_psd <- current_psd %>%
   arrange(hs_grad_date,last_name, first_name, middle_name, enrollment_begin)
 
-# 7. Format dates for export
+# 9. Format dates for export
 current_psd <- current_psd %>%
   mutate(
     enrollment_begin = format(enrollment_begin, "%Y-%m-%d"),
