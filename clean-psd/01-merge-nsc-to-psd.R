@@ -40,26 +40,57 @@ if (.Platform$OS.type == "windows") {
 }
 
 ## -----------------------------------------------------------------------------
+## UPDATE EACH RUN - checklist
+## -----------------------------------------------------------------------------
+
+# 1. CONFIG block below — school_site, nsc_academic_year_folder,
+#    nsc_effective_date_folder, nsc_detail_report_filename,
+#    master_list_filename, previous_psd_filename
+# 2. CONFIG block below — output_psd_filename
+# Run in order: Parts 1 → 2 → 3 → 4 → 5
+
+## ---------------------------
+## ⚠️ CONFIG — everything that changes per run lives here. Update this
+## block only; nothing below should need touching for a routine new pull.
+## ---------------------------
+
+# ⚠️ UPDATE: school site folder name and PSD folder name
+school_site <- "RFK"
+school_site_psd_folder <- "RFK PSD"
+
+# ⚠️ UPDATE: NSC report folder structure — academic year folder, then the
+# specific effective-date folder for THIS pull (e.g. "2025 November" or
+# "2026 April"). Run this script once per effective date (November,
+# April, August) — update both for each run.
+nsc_academic_year_folder <- "2025-2026 Student Tracker Reports"
+nsc_effective_date_folder <- "April 2026"
+
+# ⚠️ UPDATE: current NSC detail report file name (matches the effective
+# date folder above)
+nsc_detail_report_filename <- "10042443_10042443-215216-DETAIL-EFFDT-20260416-RUNDT-20260526.csv"
+
+# ⚠️ UPDATE: most recent master student list file name
+master_list_filename <- "master-student-list-rfk-2012-2025.csv"
+
+# ⚠️ UPDATE: most recent PSD file name — the PSD this run merges into.
+# When running this script multiple times in sequence (e.g. November
+# then April), point this at the PREVIOUS run's output, not the original
+# pre-November snapshot.
+previous_psd_filename <- "20260818-rfk-psd-dimagiba.csv"
+
+# ⚠️ UPDATE: this run's output filename (dated per export), following the
+# convention "YYYYMMDD-schoolsitename-psd-authorlastname"
+output_psd_filename <- "20260824-rfk-psd-dimagiba"
+
+## -----------------------------------------------------------------------------
 ## load psd helper functions
 ## -----------------------------------------------------------------------------
 
-#run the psd_rfk_function_list.R script, which contains all the helper 
+#run the psd_core_function_list.R script, which contains all the helper 
 #functions to clean and create the NSC data with the existing PSD data.
 
 #use "source" function to run the script: 
 source(file.path("psd_core_function_list.R"))
-
-## -----------------------------------------------------------------------------
-## UPDATE EACH RUN - checklist
-## -----------------------------------------------------------------------------
-
-# 1. nsc_detail_report  — update folder name (e.g. "2025 December") and file name
-# 2. master_stu_list    — update file name to most recent master student list
-# 3. previous_psd       — update file name to most recent PSD output
-# 4. See Part 5         — update enrollment_begin and coll_grad_date date filters
-# 5. See Part 5         — update output file name (naming convention below)
-# Run in order: Parts 1 → 2 → 3 → 4 → 5
-
 
 ## -----------------------------------------------------------------------------
 ## load all raw data sets
@@ -75,40 +106,31 @@ if (nrow(institution_lookup) == 0) {
 }
 
 #load new nsc student detail csv file
-nsc_detail_report <-read_csv(file.path(box_file_dir,
-                                       "College and Career RPP",
-                                       "1. NSC Dataset",
-                                       #⚠️ UPDATE: change to school site
-                                       "Mann",
-                                       "Student Tracker Reports",
-                                       #⚠️ UPDATE: change to current NSC report folder name (e.g. "2025 December")
-                                       "2025-2026 Student Tracker Reports",
-                                       "2026 April",
-                                       # ⚠️ UPDATE: change to current NSC detail report file name
-                                       "10102683hsst_10102683-216457-DETAIL-EFFDT-20260416-RUNDT-20260709.csv"
-                                       ))
+nsc_detail_report <- read_csv(file.path(box_file_dir,
+                                        "College and Career RPP",
+                                        "1. NSC Dataset",
+                                        school_site,
+                                        "Student Tracker Reports",
+                                        nsc_academic_year_folder,
+                                        nsc_effective_date_folder,
+                                        nsc_detail_report_filename))
 
 #load most recent master student directory file
-master_stu_list<- read_csv(file.path(box_file_dir,
-                                     "College and Career RPP",
-                                     "1. NSC Dataset",
-                                     #⚠️ UPDATE: change to school site
-                                     "Mann",
-                                     "Mann PSD",
-                                     "Master Student List",
-                                     #⚠️ UPDATE: change to most recent master student list file name
-                                     "mann_master_student_list_2021-2025.csv"
-                                     ))
+master_stu_list <- read_csv(file.path(box_file_dir,
+                                      "College and Career RPP",
+                                      "1. NSC Dataset",
+                                      school_site,
+                                      school_site_psd_folder,
+                                      "Master Student List",
+                                      master_list_filename))
 
 #load most recent psd file
 previous_psd <- read_csv(file.path(box_file_dir,
                                    "College and Career RPP",
                                    "1. NSC Dataset",
-                                   "Mann",
-                                   "Mann PSD",
-                                   # ⚠️ UPDATE: change to most recent PSD file name
-                                   "20250916-mann-psd-dimagiba.csv"
-                                   ))
+                                   school_site,
+                                   school_site_psd_folder,
+                                   previous_psd_filename))
 
 ## -----------------------------------------------------------------------------
 ##  Part 1 - Clean NSC Dataset
@@ -154,7 +176,7 @@ nsc_data<- nsc_data %>%
     college_name2, college_state, cc_4year, public_private,enrollment_begin, 
     enrollment_end, enrollment_status, he_graduated, coll_grad_date, 
     degree_title, major, college_sequence,program_code
-    ) %>% 
+  ) %>% 
   rename(college_name = 'college_name2')
 
 # 5. Add PSD-specific variables using add_psd_variables()
@@ -270,41 +292,57 @@ psd_data <- assign_column_classes(psd_data)
 # 3. Parse dates columns to Date class
 psd_data<- parse_dates(psd_data)
 
+# Compute this run's enrollment/graduation date filter boundaries
+# automatically — a fixed, mechanical rule, not something a person needs
+# to read off and retype into CONFIG each run:
+#   start = day after the latest value already in previous_psd
+#   end   = latest value found in THIS NSC pull
+# max(..., na.rm = TRUE) on an all-NA column (e.g. a brand-new
+# previous_psd with no dates yet) silently returns -Inf rather than
+# erroring — checked explicitly below so that case stops the script with
+# a clear message instead of producing a nonsensical filter range.
+enrollment_filter_start <- max(psd_data$enrollment_begin, na.rm = TRUE) + 1
+enrollment_filter_end <- max(nsc_data$enrollment_begin, na.rm = TRUE)
+grad_filter_start <- max(psd_data$coll_grad_date, na.rm = TRUE) + 1
+grad_filter_end <- max(nsc_data$coll_grad_date, na.rm = TRUE)
+
+date_bounds <- c(enrollment_filter_start = enrollment_filter_start,
+                 enrollment_filter_end = enrollment_filter_end,
+                 grad_filter_start = grad_filter_start,
+                 grad_filter_end = grad_filter_end)
+
+if (any(!is.finite(date_bounds))) {
+  stop("Could not compute one or more date filter boundaries — likely an ",
+       "all-NA date column in psd_data or nsc_data (e.g. previous_psd has ",
+       "no enrollment_begin/coll_grad_date values yet). Investigate before ",
+       "continuing.")
+}
+
+cat("\nDate filter boundaries for this run:\n")
+cat("  enrollment:", format(enrollment_filter_start, "%Y-%m-%d"), "to",
+    format(enrollment_filter_end, "%Y-%m-%d"), "\n")
+cat("  graduation:", format(grad_filter_start, "%Y-%m-%d"), "to",
+    format(grad_filter_end, "%Y-%m-%d"), "\n\n")
+
 ## -----------------------------------------------------------------------------
 ## Part 5 - Select and bind new NSC file records with most recent PSD
 ## -----------------------------------------------------------------------------
 
 # 1. Create smaller dataframe with NEW college enrollment records
-# GUIDANCE:
-# Filters to NEW enrollment records only — avoids duplicating records already in previous PSD
-# First date  = day after the latest enrollment_begin from the PREVIOUS NSC pull.
-#               You can refer to the last NSC report date in the Box folder name
-# To find first date: max(psd_data$enrollment_begin, na.rm = TRUE)
-# Second date = latest enrollment_begin in new NSC pull
-# To find second date: max(nsc_data$enrollment_begin, na.rm = TRUE)
-# Example: filter(between(enrollment_begin, as.Date('2025-07-08'), as.Date('2025-10-27')))
-#          First date  = 2025-07-08 (day after latest enrollment_begin in August 2025 NSC pull)
-#          Second date = 2025-10-27 (latest enrollment_begin in December 2025 NSC pull)
-# ⚠️ UPDATE DATES BELOW each run
+# Filters to NEW enrollment records only — avoids duplicating records
+# already in previous_psd. enrollment_filter_start/end computed
+# automatically above.
 nsc_enrollment_data <- nsc_data %>% 
-  filter(between(enrollment_begin, as.Date('2025-06-23'), as.Date('2026-02-17')))
+  filter(between(enrollment_begin, enrollment_filter_start, enrollment_filter_end))
 
 # 2. Create smaller dataframe with NEW college graduation records
-# GUIDANCE:
-# Filters to NEW graduation records only — avoids duplicating records already in previous PSD
-# First date  = day after the latest coll_grad_date from the previous psd.
-#               You can refer to the last NSC report date in the Box folder name
-# To find first date: max(psd_data$coll_grad_date,na.rm = TRUE)
-# Second date = latest coll_grad_date in new NSC pull
-# To find second date: max(nsc_data$coll_grad_date, na.rm = TRUE)
-# Example: filter(between(coll_grad_date, as.Date('2025-06-18'), as.Date('2025-12-02')))
-#          First date  = 2025-06-18 (day after latest coll_grad_date in August 2025 NSC pull)
-#          Second date = 2025-12-02 (latest coll_grad_date in December 2025 NSC pull)
-# ⚠️ UPDATE DATES BELOW each run
+# Filters to NEW graduation records only — avoids duplicating records
+# already in previous_psd. grad_filter_start/end computed automatically
+# above.
 nsc_grads_data <- nsc_data %>% 
-  filter(between(coll_grad_date, as.Date('2025-05-08'), as.Date('2025-12-12')))
+  filter(between(coll_grad_date, grad_filter_start, grad_filter_end))
 
-# 3a. Confirm all data frames have the same 34 variable columns and class types
+# 3. Confirm all data frames have the same 34 variable columns and class types
 # Check column names match across all three data frames
 
 stopifnot(
@@ -315,14 +353,14 @@ stopifnot(
 )
 
 
-# 3b. Check class types match across all three data frames
+# 4. Check class types match across all three data frames
 check_type(list(nsc_enrollment_data, nsc_grads_data, psd_data),
            c("nsc_enrollment", "nsc_grads", "psd"))
 
 check_type_mismatch(list(nsc_enrollment_data, nsc_grads_data, psd_data),
                     c("nsc_enrollment", "nsc_grads", "psd"))
 
-# 4. Bind to enrollment and graduation records to most up-to-date PSD 
+# 5. Bind to enrollment and graduation records to most up-to-date PSD 
 
 current_psd<-bind_rows(
   psd = psd_data,
@@ -335,18 +373,18 @@ if (nrow(current_psd) < nrow(psd_data)) {
   stop("⚠️ current_psd has fewer rows than previous PSD — something went wrong in binding")
 }
 
-# 5. Sort by consistency and readability ----
+# 6. Sort by consistency and readability ----
 current_psd <- current_psd %>%
   arrange(hs_grad_date,last_name, first_name, middle_name, enrollment_begin)
 
-# 6. Format dates for export
+# 7. Format dates for export
 current_psd <- current_psd %>%
   mutate(
     enrollment_begin = format(enrollment_begin, "%Y-%m-%d"),
     enrollment_end = format(enrollment_end, "%Y-%m-%d"),
     coll_grad_date = format(coll_grad_date, "%Y-%m-%d"),
     hs_grad_date = format(hs_grad_date, "%Y-%m-%d")
-    ) 
+  ) 
 
 ## -----------------------------------------------------------------------------
 ## Part 6 - Export updated PSD to Box
@@ -354,17 +392,15 @@ current_psd <- current_psd %>%
 
 #1. Write new psd csv file to Box
 # NAMING CONVENTION: "YYYYMMDD-schoolsitename-psd-authorlastname.csv"
-# Example: "20260521-rfk-psd-dimagiba.csv"
+# ⚠️ UPDATE output_psd_filename in CONFIG each run — not here.
 
 write.csv(current_psd,
           file = file.path(box_file_dir,
                            "College and Career RPP",
                            "1. NSC Dataset",
-                           "Mann",
-                           "Mann PSD",
-                           #⚠️ UPDATE: change to current date and author name following naming convention
-                           "20260721-mann-psd-sanchez.csv"
-                           ),
+                           school_site,
+                           school_site_psd_folder,
+                           output_psd_filename),
           row.names = FALSE)
 
 # Confirm the file was exported to Box folder
