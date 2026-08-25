@@ -127,8 +127,7 @@ add_psd_variables<-function(nsc_data,institution_lookup){
     #join institution (sys_type) attributes using college_code
     left_join(institution_lookup %>% 
                 select(college_code,system_type),
-              by = "college_code",
-              relationship = "many-to-many") %>% 
+              by = "college_code") %>% 
     select(student_id,first_name, middle_name, last_name, name_suffix, record_found, req_return_field, high_school_code,
            hs_grad_date_date, college_code, college_name, college_state, cc_4year, public_private,enrollment_begin_date,
            enrollment_end_date,enrollment_status, he_graduated, coll_grad_date_date,degree_title, major, college_sequence,
