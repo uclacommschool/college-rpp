@@ -22,6 +22,13 @@ library(janitor)
 library(data.table)
 
 ## ---------------------------
+## set working directory
+## ---------------------------
+
+# sets working directory to the folder the script is saved in
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+## ---------------------------
 ## directory paths
 ## ---------------------------
 
@@ -47,10 +54,10 @@ school_site <- "RFK"
 school_site_psd_folder <- "RFK PSD"
 
 # ⚠️ UPDATE: most recent PSD file name (dated per export, e.g. from 01-merge)
-current_psd_filename <- "20260818-rfk-psd-dimagiba.csv"
+current_psd_filename <- "20260825-rfk-psd-dimagiba.csv"
 
 # ⚠️ UPDATE: most recent master student list file name (Section 7.2)
-master_list_filename <- "master-student-list-rfk-2012-2026.csv"
+master_list_filename <- "master-student-list-rfk-2012-2025.csv"
 
 # The target year/term this cycle is checking against. This script only
 # ever runs following the November NSC pull (per Section 5's schedule),
@@ -75,8 +82,8 @@ tracking_years_back <- 8
 min_hs_grad_year_tracked <- target_record_year - tracking_years_back
 
 # ⚠️ UPDATE: this run's output filenames (dated per export)
-stop_track_filename <- "20260820-rfk-stopTrack-dimagiba.csv"
-missing_list_internal_filename <- "20260820-rfk-missingListInternal-dimagiba.csv"
+stop_track_filename <- "20260825-rfk-stopTrack-dimagiba.csv"
+missing_list_internal_filename <- "20260825-rfk-missingListInternal-dimagiba.csv"
 
 ## ---------------------------
 ## load helper functions
