@@ -70,7 +70,7 @@ current_cycle_fall_year <- 2025L
 working_list_filename <- "WORKING_2025-2026 Post-Paths Final's Follow up.xlsx"
 
 # ⚠️ UPDATE: most recent master student list file name (Section 7.2)
-master_list_filename <- "master-student-list-rfk-2012-2026.csv"
+master_list_filename <- "master-student-list-rfk-2012-2025.csv"
 
 # ⚠️ UPDATE: most recent PSD file name (dated per export, e.g. from 01-merge)
 previous_psd_filename <- "20260818-rfk-psd-dimagiba.csv"
@@ -91,15 +91,13 @@ excluded_records_filename <- "20260818-rfk-excluded-records-dimagiba.csv"
 # ⚠️ UPDATE: manually-entered HS graduation dates for any cohort not yet
 # reflected in previous_psd (hasn't been through a PSD merge yet). Add a
 # row for each affected year — not limited to a single "newest" cohort,
-# since more than one recent year can be missing at once (e.g. both 2025
-# and 2026 were missing simultaneously the first time this came up).
+# since more than one recent year can be missing at once. 
 # Dates are plain strings, matching hs_grad_date_lookup's existing
 # character type (previous_psd's dates never parse as true Date, due to
 # NSC's mixed historical date formats) — don't wrap in as.Date().
 manual_hs_grad_dates <- tibble::tribble(
   ~hs_grad_year, ~hs_grad_date,
   2025,          as.Date("2025-06-09"),
-  2026,          as.Date("2026-06-18")
 )
 
 ## ---------------------------
