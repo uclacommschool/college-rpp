@@ -25,9 +25,8 @@ library(data.table)
 ## set working directory
 ## ---------------------------
 
-# sets working directory to the folder the script is saved in — matches
-# 01-merge-nsc-to-psd.R's pattern. Protects the source() call below
-# (bare relative path) from failing or silently loading the wrong file
+# sets working directory to the folder the script is saved in.
+#Protects the source() call below (bare relative path) from failing or silently loading the wrong file
 # if the session's working directory wasn't already set correctly.
 # NOTE: this depends on THIS script's tab being the active/focused one
 # in RStudio when the line runs — if a different tab has focus, this
