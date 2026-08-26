@@ -22,6 +22,13 @@ library(readr)
 library(janitor)
 
 ## ---------------------------
+## set working directory
+## ---------------------------
+
+# sets working directory to the folder the script is saved in
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+## ---------------------------
 ## directory paths
 ## ---------------------------
 
@@ -47,16 +54,23 @@ school_site <- "RFK"
 school_site_psd_folder <- "RFK PSD"
 
 # ⚠️ UPDATE: most recent PSD file name (dated per export, e.g. from 01-merge)
-current_psd_filename <- "20260818-rfk-psd-dimagiba.csv"
+current_psd_filename <- "20260825-rfk-psd-dimagiba.csv"
 
 # ⚠️ UPDATE: most recent clean follow up list file name
 followup_clean_filename <- "20260818-rfk-followup-clean-dimagiba.csv"
 
 # ⚠️ UPDATE: most recent stop tracking list file namme
-stop_track_filename <- "20260820-rfk-stopTrack-dimagiba.csv"
+stop_track_filename <- "20260826-rfk-stopTrack-dimagiba.csv"
 
 # ⚠️ UPDATE: this run's output filenames (dated per export)
-output_psd_filename <- "20260824-rfk-psd-dimagiba.csv"
+output_psd_filename <- "20260826-rfk-psd-dimagiba.csv"
+
+# ⚠️ UPDATE: the target record year 02-create-missing-list-from-psd.R
+# used for this cycle — must match target_record_year in 02's CONFIG.
+# Used only by Part 3's stop-track validation (step 4), to check the
+# same 3-year window flag_new_stop_track() itself evaluated when
+# deciding who to stop-track.
+target_record_year <- 2025
 
 ## ---------------------------
 ## load shared helper functions
@@ -215,6 +229,44 @@ if (nrow(schema_mismatch_check) > 0) {
        "before continuing:\n",
        paste(capture.output(print(schema_mismatch_check)), collapse = "\n"))
 }
+
+# 4. Confirm no psd_id in stop_track actually has a real, non-missing
+# record in previous_psd within the SAME 3-year window
+# flag_new_stop_track() (02) itself evaluated (target_record_year - 3
+# through target_record_year - 1). If someone shows up here, it's a
+# genuine contradiction: they were stop-tracked in 02 on the basis of 3
+# consecutive missing years, but previous_psd shows a real record inside
+# that exact window — worth investigating as a bug in the stop-tracking
+# decision, not just a data-quality note.
+#
+# Deliberately scoped to this specific recent window, not "any record,
+# ever" — a student can have real history from years ago and still
+# correctly qualify for stop-tracking today if the 3 years immediately
+# preceding this cycle were genuinely all missing. An unscoped check
+# flags nearly everyone who's ever had any real record at all (confirmed
+# empirically: an unscoped version flagged 127 of 157 candidates in one
+# run — almost all noise from old history, unrelated to the actual
+# stop-tracking decision).
+stop_track_false_positive_check <- stop_track %>%
+  select(psd_id) %>%
+  inner_join(
+    previous_psd %>%
+      filter(record_year %in% (target_record_year - 3):(target_record_year - 1)) %>%
+      filter(system_type != "MISSING DATA", !is.na(system_type)),
+    by = "psd_id"
+  )
+
+n_stop_track_false_positives <- dplyr::n_distinct(stop_track_false_positive_check$psd_id)
+
+if (n_stop_track_false_positives > 0) {
+  stop(n_stop_track_false_positives, " psd_id(s) in stop_track have a ",
+       "real (non-MISSING DATA) record in previous_psd within the exact ",
+       "3-year window used to determine stop-tracking — contradicts the ",
+       "stop-tracking decision. Investigate before continuing:\n",
+       paste(capture.output(print(stop_track_false_positive_check %>%
+                                    distinct(psd_id))), collapse = "\n"))
+}
+
 ## -----------------------------------------------------------------------------
 ## Part 4 - Bind and Validate After Binding
 ## -----------------------------------------------------------------------------
@@ -251,10 +303,16 @@ if (n_actual != n_expected) {
 # four values WOULD be a genuine duplicate — the same fact recorded twice.
 dup_check_bind <- new_psd %>% count(psd_id, record_term, record_year, he_graduated) %>%
   filter(n >1)
-if(nrow(dup_check_bind) > 0) {
-  stop(nrow(dup_check_bind),"VALIDATION FAILED: There are multiple records for psd_id(s). Review before
-       continuing.")
+if (nrow(dup_check_bind) > 0) {
+  stop(nrow(dup_check_bind), " row(s) have duplicate psd_id + record_term ",
+       "+ record_year + he_graduated combinations. Review before continuing.")
 }
+
+message("All validation checks passed: ", n_actual,
+        " total row(s) in new_psd — ", n_previous_psd, " from previous_psd, ",
+        n_followup_clean, " from followup_clean, ", n_stop_track,
+        " from stop_track.")
+
 ## -----------------------------------------------------------------------------
 ## Part 5 - Export New PSD Snapshot
 ## -----------------------------------------------------------------------------
