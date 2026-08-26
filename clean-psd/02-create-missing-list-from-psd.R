@@ -25,7 +25,15 @@ library(data.table)
 ## set working directory
 ## ---------------------------
 
-# sets working directory to the folder the script is saved in
+# sets working directory to the folder the script is saved in — matches
+# 01-merge-nsc-to-psd.R's pattern. Protects the source() call below
+# (bare relative path) from failing or silently loading the wrong file
+# if the session's working directory wasn't already set correctly.
+# NOTE: this depends on THIS script's tab being the active/focused one
+# in RStudio when the line runs — if a different tab has focus, this
+# will set the working directory to that tab's folder instead. Usually
+# true when running via Source, but worth knowing if source() ever
+# fails to find a file that's genuinely present.
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 ## ---------------------------
@@ -54,10 +62,10 @@ school_site <- "RFK"
 school_site_psd_folder <- "RFK PSD"
 
 # ⚠️ UPDATE: most recent PSD file name (dated per export, e.g. from 01-merge)
-current_psd_filename <- "20260825-rfk-psd-dimagiba.csv"
+current_psd_filename <- "20260818-rfk-psd-dimagiba.csv"
 
 # ⚠️ UPDATE: most recent master student list file name (Section 7.2)
-master_list_filename <- "master-student-list-rfk-2012-2025.csv"
+master_list_filename <- "master-student-list-rfk-2012-2026.csv"
 
 # The target year/term this cycle is checking against. This script only
 # ever runs following the November NSC pull (per Section 5's schedule),
@@ -82,8 +90,8 @@ tracking_years_back <- 8
 min_hs_grad_year_tracked <- target_record_year - tracking_years_back
 
 # ⚠️ UPDATE: this run's output filenames (dated per export)
-stop_track_filename <- "20260825-rfk-stopTrack-dimagiba.csv"
-missing_list_internal_filename <- "20260825-rfk-missingListInternal-dimagiba.csv"
+stop_track_filename <- "20260820-rfk-stopTrack-dimagiba.csv"
+missing_list_internal_filename <- "20260820-rfk-missingListInternal-dimagiba.csv"
 
 ## ---------------------------
 ## load helper functions
@@ -99,21 +107,20 @@ source(file.path("psd_core_function_list.R"))
 ## ---------------------------
 ## local helper functions
 ## ---------------------------
-# ─────────────────────────────────────────────────────────────────────────────
-#' Identify students absent from a target year/term
-#'
-#' Returns a dataframe of missing students' most recent prior records,
-#' updated to the target year/term.
-#'
-#' @param df The full dataframe containing all student records
-#' @param record_year The target year to check against (required; no
-#'   default — always pass target_record_year from CONFIG)
-#' @param record_term The target term to check against (required; no
-#'   default — always pass target_record_term from CONFIG)
-#' @return A dataframe of missing students with record_year and
-#'   record_term set to the target values, based on each student's most
-#'   recent prior record.
-# Called in 02-create-missing-list-from-psd.R, Part 2 step 1
+
+# FUNCTION: generate_missing_list
+# PURPOSE:  Identifies students absent from a target year/term and returns
+#           a dataframe of their most recent prior records, updated to the
+#           target year/term.
+# INPUT:    df — the full dataframe containing all student records
+#           record_year — the target year to check against (required; no
+#                default — always pass target_record_year from CONFIG)
+#           record_term — the target term to check against (required; no
+#                default — always pass target_record_term from CONFIG)
+# OUTPUT:   A dataframe of missing students with record_year and record_term
+#           set to the target values, based on each student's most recent
+#           prior record.
+# CALLED IN: 02-create-missing-list-from-psd.R, Part 2 step 1
 
 generate_missing_list <- function(df, record_year, record_term) {
   
@@ -186,19 +193,17 @@ generate_missing_list <- function(df, record_year, record_term) {
   
   return(missing_df)
 }
-# ─────────────────────────────────────────────────────────────────────────────
-#' Flag students whose notes indicate stopped tracking
-#'
-#' Adds a binary indicator column to a dataframe flagging students whose
-#' 'notes' field contains "stop track" or "stopped tracking"
-#' (case-insensitive).
-#'
-#' @param df A dataframe containing a 'notes' column
-#' @param indicator_name Name of the new indicator column
-#'   (default: "stopped_tracking")
-#' @return The same dataframe with one new integer column
-#'   (1 = flagged, 0 = not flagged).
-# Called in 02-create-missing-list-from-psd.R, Part 2 step 9
+
+# FUNCTION: flag_stopped_tracking
+# PURPOSE:  Adds a binary indicator column to a dataframe flagging students
+#           whose 'notes' field contains "stop track" or "stopped tracking"
+#           (case-insensitive).
+# INPUT:    df — a dataframe containing a 'notes' column
+#           indicator_name — name of the new indicator column
+#                (default: "stopped_tracking")
+# OUTPUT:   The same dataframe with one new integer column
+#           (1 = flagged, 0 = not flagged).
+# CALLED IN: 02-create-missing-list-from-psd.R, Part 2 step 9
 
 flag_stopped_tracking <- function(df, indicator_name = "stopped_tracking") {
   
@@ -217,15 +222,28 @@ flag_stopped_tracking <- function(df, indicator_name = "stopped_tracking") {
     )
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# flag_new_stop_track()
+# FUNCTION: flag_new_stop_track
+# PURPOSE:  Identifies students in the missing list who have had
+#           system_type == "MISSING DATA" on EVERY row across ALL terms
+#           for 3 or more consecutive full calendar years, with no
+#           non-"MISSING DATA" value breaking the streak. Marks qualifying
+#           students as stop-track in notes and sets stopped_tracking = 1.
+# INPUT:    missing_df — output of generate_missing_list(), already run
+#                through flag_stopped_tracking() so stopped_tracking
+#                column exists
+#           master_df — full master dataset containing all historical
+#                records
+#           record_year — target year (required; no default — always
+#                pass target_record_year from CONFIG). Streak is
+#                evaluated on all years strictly before this value.
+#           consecutive_years — minimum consecutive "all_missing" years
+#                to qualify (required; no default — always pass
+#                consecutive_years_threshold from CONFIG)
+# OUTPUT:   missing_df with notes and stopped_tracking updated for newly
+#           flagged students.
+# CALLED IN: 02-create-missing-list-from-psd.R, Part 2 step 5a
 #
-# Identifies students in the missing list who have had system_type == "MISSING DATA"
-# on EVERY row across ALL terms for 3 or more consecutive full calendar years,
-# with no non-"MISSING DATA" value breaking the streak. Marks qualifying students
-# as stop-track in notes and sets stopped_tracking = 1.
-#
-# Logic:
+# NOTE on logic:
 #   1. For each student in the master data, classify each year as:
 #        - "all_missing" : every row that year has system_type == "MISSING DATA"
 #        - "not_missing" : at least one row that year has a different value
@@ -236,21 +254,6 @@ flag_stopped_tracking <- function(df, indicator_name = "stopped_tracking") {
 #   4. For qualifying students in missing_df (not already flagged):
 #        - Append "stop track <record_year>" to notes.
 #        - Set stopped_tracking = 1.
-#
-# Args:
-#   missing_df        : Output of generate_missing_list(), already run through
-#                       flag_stopped_tracking() so stopped_tracking column exists.
-#   master_df         : Full master dataset containing all historical records.
-#   record_year       : Target year (required; no default — always pass
-#                       target_record_year from CONFIG). Streak is evaluated
-#                       on all years strictly before this value.
-#   consecutive_years : Minimum consecutive "all_missing" years to qualify
-#                       (required; no default — always pass
-#                       consecutive_years_threshold from CONFIG).
-#
-# Returns:
-#   missing_df with notes and stopped_tracking updated for newly flagged students.
-# ─────────────────────────────────────────────────────────────────────────────
 
 flag_new_stop_track <- function(missing_df,
                                 master_df,
@@ -332,39 +335,35 @@ flag_new_stop_track <- function(missing_df,
   return(missing_df)
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# construct_stop_track_record()
+# FUNCTION: construct_stop_track_record
+# PURPOSE:  Transforms a raw stop-track candidate (their most recent prior
+#           PSD row, from generate_missing_list()) into a proper
+#           PSD-compatible stop-tracking record, per the
+#           tracking_status/stop-tracking redesign:
+#             - Resets all unconfirmed postsecondary fields to NA —
+#               preserves only identifiers and demographic information.
+#             - Sets status_source = "inferred", tracking_status = "stopped".
+#             - Anchors record_term/record_year to the current cycle.
+#             - Writes the standardized Template W note (Postsecondary
+#               Status Note Standards) into the notes field, filled in
+#               with the actual academic year monitoring was discontinued.
+# INPUT:    df — raw stop-track candidates (e.g. stop_track_df, filtered
+#                from missing_df by stopped_tracking == 1)
+#           record_year — the Fall year monitoring stopped
+#                (target_record_year)
+#           record_term — the term monitoring stopped (target_record_term
+#                — always "fall" for this script, per Section 5's schedule)
+# OUTPUT:   df with postsecondary fields reset and tracking metadata applied.
+# CALLED IN: 02-create-missing-list-from-psd.R, Part 2 step 5b
 #
-# Transforms a raw stop-track candidate (their most recent prior PSD row,
-# from generate_missing_list()) into a proper PSD-compatible stop-tracking
-# record, per the tracking_status/stop-tracking redesign:
-#   - Resets all unconfirmed postsecondary fields to NA — preserves only
-#     identifiers and demographic information.
-#   - Sets status_source = "inferred", tracking_status = "stopped".
-#   - Anchors record_term/record_year to the current cycle.
-#   - Writes the standardized Template W note (Postsecondary Status Note
-#     Standards) into the notes field, filled in with the actual academic
-#     year monitoring was discontinued.
-#
-# This does NOT modify or replace any of the student's PRIOR PSD records —
-# it produces one NEW administrative record, to be appended by the merge
-# script (05-merge-missing-data.R) alongside the existing PSD and script
-# 04's cleaned follow-up output. If a previously stopped student later
-# reappears in an NSC report or gets new verified info, that's just a
-# normal new record with tracking_status = "active" — nothing here needs
-# to "undo" this record; historical records are never changed
-# retrospectively.
-#
-# Args:
-#   df          : Raw stop-track candidates (e.g. stop_track_df, filtered
-#                 from missing_df by stopped_tracking == 1)
-#   record_year : The Fall year monitoring stopped (target_record_year)
-#   record_term : The term monitoring stopped (target_record_term — always
-#                 "fall" for this script, per Section 5's schedule)
-#
-# Returns:
-#   df with postsecondary fields reset and tracking metadata applied.
-# ─────────────────────────────────────────────────────────────────────────────
+# NOTE: this does NOT modify or replace any of the student's PRIOR PSD
+# records — it produces one NEW administrative record, to be appended by
+# the merge script (05-merge-missing-data.R) alongside the existing PSD
+# and script 04's cleaned follow-up output. If a previously stopped
+# student later reappears in an NSC report or gets new verified info,
+# that's just a normal new record with tracking_status = "active" —
+# nothing here needs to "undo" this record; historical records are never
+# changed retrospectively.
 
 construct_stop_track_record <- function(df, record_year, record_term) {
   
@@ -403,7 +402,7 @@ construct_stop_track_record <- function(df, record_year, record_term) {
 ## load all raw data sets
 ## -----------------------------------------------------------------------------
 
-#load recently updated psd file from 01-merge script.  
+#load recently updated psd file from 01-merge script
 current_psd <- read_csv(file.path(box_file_dir,
                                   "College and Career RPP",
                                   "1. NSC Dataset",
@@ -665,6 +664,16 @@ if (nrow(stop_track_df) == 0) {
   message("No new stop-track students this cycle — exporting an empty ",
           "file for consistency (rather than skipping the export).")
 }
+
+# Drop working-only columns not part of the real PSD schema —
+# flag_4yr_grad (Part 2's defense-in-depth safety net) and
+# stopped_tracking (flag_stopped_tracking()'s indicator column) both
+# exist purely to support this script's internal logic and were never
+# meant to flow into the exported file. Without this, stop_track_df
+# exports with 37 columns instead of the expected 35, which 05 then
+# needs to reconcile against previous_psd/followup_clean's schema.
+stop_track_df <- stop_track_df %>% select(-flag_4yr_grad, -stopped_tracking)
+
 # NAMING CONVENTION: "YYYYMMDD-schoolsitename-stopTrack-authorlastname.csv"
 write.csv(stop_track_df,
           file = file.path(box_file_dir,
