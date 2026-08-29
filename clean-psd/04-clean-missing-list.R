@@ -3,7 +3,7 @@
 ## [ PROJ ] < Community School Postsecondary Database >
 ## [ FILE ] < 04-clean-missing-list.R >
 ## [ AUTH ] < Jeffrey Yo >
-## [ INIT ] < 9/3/25, updated 08/24/2026 Ariana Dimagiba >
+## [ INIT ] < 9/3/25, updated 08/29/2026 Ariana Dimagiba >
 ##
 ################################################################################
 
@@ -46,6 +46,28 @@ library(data.table)    # fread() — reads the missing-list CSV from script 02
 library(readxl)        # excel_sheets(), read_excel() — reads the manually-exported
 # .xlsx snapshot of the school-facing missing list (see Part 1)
 library(janitor)       # clean_names() — standardizes column name formatting
+
+## ---------------------------
+## set working directory
+## ---------------------------
+
+# sets working directory to the folder the script is saved in
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+## ---------------------------
+## directory paths
+## ---------------------------
+
+#set current directory
+code_file_dir<-file.path(".")
+
+# Detect OS and set Box path accordingly
+if (.Platform$OS.type == "windows") {
+  box_file_dir <- file.path(Sys.getenv("USERPROFILE"), "Box")
+} else {
+  # Box Drive syncs via CloudStorage on Mac
+  box_file_dir <- file.path(Sys.getenv("HOME"), "Library", "CloudStorage", "Box-Box")
+}
 
 ## ---------------------------
 ## ⚠️ CONFIG — everything that changes per run lives here. Update this
@@ -100,25 +122,6 @@ manual_hs_grad_dates <- tibble::tribble(
   2025,          as.Date("2025-06-09"),
 )
 
-## ---------------------------
-## directory paths
-## ---------------------------
-
-#see current directory
-getwd()
-
-#set current directory
-code_file_dir<-file.path(".")
-
-data_file_dir<-file.path("..","..")
-
-# Detect OS and set Box path accordingly
-if (.Platform$OS.type == "windows") {
-  box_file_dir <- file.path(Sys.getenv("USERPROFILE"), "Box")
-} else {
-  # Box Drive syncs via CloudStorage on Mac
-  box_file_dir <- file.path(Sys.getenv("HOME"), "Library", "CloudStorage", "Box-Box")
-}
 
 # set snapshot file path to the WORKING copy of the Postsecondary Paths Follow Up List.
 # ⚠️ Folder reorganization (per stop-tracking/tracking_status redesign):
@@ -128,7 +131,7 @@ if (.Platform$OS.type == "windows") {
 # — flat structure, per team decision.
 missing_list_snapshot <- file.path(box_file_dir,
                                    "College and Career RPP",
-                                   "1. NSC Dataset",
+                                   "4. NSC Dataset",
                                    school_site,
                                    school_site_psd_folder,
                                    "Missing List - External",
@@ -144,7 +147,7 @@ source(file.path("clean_missing_list_function_list.R"))
 # load institution lookup reference table - one row per college/institution
 institution_lookup <- read_csv(file.path(box_file_dir,
                                          "College and Career RPP",
-                                         "1. NSC Dataset",
+                                         "4. NSC Dataset",
                                          "institution_lookup.csv"))
 
 # load most recent master student list — one row per student, standing
@@ -156,7 +159,7 @@ institution_lookup <- read_csv(file.path(box_file_dir,
 # that broke if this script ran on its own.
 master_stu_list <- read_csv(file.path(box_file_dir,
                                       "College and Career RPP",
-                                      "1. NSC Dataset",
+                                      "4. NSC Dataset",
                                       school_site,
                                       school_site_psd_folder,
                                       "Master Student List",
@@ -168,7 +171,7 @@ master_stu_list <- read_csv(file.path(box_file_dir,
 # and can't be computed from hs_grad_year alone. 
 previous_psd <- read_csv(file.path(box_file_dir,
                                    "College and Career RPP",
-                                   "1. NSC Dataset",
+                                   "4. NSC Dataset",
                                    school_site,
                                    school_site_psd_folder,
                                    previous_psd_filename))
@@ -622,7 +625,7 @@ clean_data <- clean_data %>%
 write.csv(clean_data,
           file.path(box_file_dir,
                     "College and Career RPP",
-                    "1. NSC Dataset",
+                    "4. NSC Dataset",
                     school_site,
                     school_site_psd_folder,
                     "Missing List - Clean",
@@ -638,7 +641,7 @@ write.csv(clean_data,
 write.csv(excluded_records,
           file.path(box_file_dir,
                     "College and Career RPP",
-                    "1. NSC Dataset",
+                    "4. NSC Dataset",
                     school_site,
                     school_site_psd_folder,
                     "Missing List - Clean",
