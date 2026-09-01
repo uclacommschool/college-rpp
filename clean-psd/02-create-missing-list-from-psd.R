@@ -125,7 +125,8 @@ generate_missing_list <- function(df, record_year, record_term) {
   
   # Students present in the target year/term
   target_ids <- df |>
-    dplyr::filter(record_year == !!record_year, record_term == !!record_term) |>
+    dplyr::filter(record_year == !!record_year,
+                  toupper(trimws(record_term)) == record_term_target) |>
     dplyr::pull(psd_id) |>
     unique()
   
@@ -169,22 +170,36 @@ generate_missing_list <- function(df, record_year, record_term) {
   }
   
   # Term ordering for resolving "most recent" across terms within the same year
-  term_order <- c("plans"=1,"enrolled anytime after fall" =2,
+  # FIX: the raw data contains two spellings of the same term
+  # ("ENROLLED ANYTIME AFTER FALL" and "ENROLLED AFTER FALL AT ANYTIME") --
+  # both are mapped to the same rank so neither silently falls back to 0
+  # and gets treated as older than it actually is.
+  term_order <- c("plans"=1,
+                  "enrolled anytime after fall" = 2,
+                  "enrolled after fall at anytime" = 2,
                   "winter" = 3, "spring" = 4, "summer" = 5, "fall" = 6)
   
   # For each missing student, grab their most recent record
   missing_df <- df |>
     dplyr::filter(psd_id %in% missing_ids) |>
     dplyr::mutate(
-      .term_rank = dplyr::coalesce(term_order[tolower(record_term)], 0L)
+      .term_rank = dplyr::coalesce(term_order[tolower(trimws(record_term))], 0L)
     ) |>
-    dplyr::arrange(psd_id, dplyr::desc(record_year), dplyr::desc(.term_rank)) |>
+    # FIX: some students have multiple PSD rows for the exact same
+    # year/term (multiple NSC match records). When those tie on year and
+    # term rank, prefer a row that shows he_graduated == "Y" so a
+    # graduation flag recorded in a sibling row for that same term isn't
+    # discarded in favor of an arbitrary non-graduated duplicate.
+    dplyr::arrange(psd_id, dplyr::desc(record_year), dplyr::desc(.term_rank),
+                   dplyr::desc(he_graduated == "Y")) |>
     dplyr::slice_head(n = 1, by = psd_id) |>
     dplyr::select(-.term_rank) |>
-    # Stamp with target year/term
+    # Stamp with target year/term (uppercased to match the PSD's existing
+    # record_term convention, so this doesn't reintroduce the case-mismatch
+    # bug when this output later gets merged back into next year's PSD)
     dplyr::mutate(
       record_year = !!record_year,
-      record_term = !!record_term
+      record_term = record_term_target
     )
   
   message(nrow(missing_df), " missing student(s) found for ",

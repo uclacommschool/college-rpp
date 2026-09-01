@@ -164,9 +164,9 @@ nsc_data <- add_student_id(nsc_data)
 nsc_data<- nsc_data %>%
   mutate(college_name2 = case_when(
     # Cal Poly campuses - NSC sends inconsistent truncated names
-    college_code == "001149-00" ~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY -  HUMBOLDT",
-    college_code == "001143-00" ~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY - SAN LUIS OBISPO",
-    college_code == "001144-00"~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY - POMONA",
+    college_code == "001149-00" ~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, HUMBOLDT",
+    college_code == "001143-00" ~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, SAN LUIS OBISPO",
+    college_code == "001144-00"~ "CALIFORNIA STATE POLYTECHNIC UNIVERSITY, POMONA",
     TRUE ~ as.character(college_name))) %>%
   select(
     student_id,  first_name, middle_name, last_name, name_suffix, 
