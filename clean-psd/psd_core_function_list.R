@@ -1,11 +1,12 @@
 ################################################################################
 ##
 ## [ PROJ ] < College Data Project >
-## [ FILE ] < psd_rfk_function_list.R >
-## [ AUTH ] < Jeffrey Yo / yjeffrey77 >
-## [ INIT ] < 4/30/2022, updated 04/15/2026 aridimagiba >
+## [ FILE ] < psd_core_function_list.R >
+## [ AUTH ] < Jeffrey Yo / yjeffrey77, updated 08/20/2026 aridimagiba >
 ##
-
+## Renamed from psd_rfk_function_list.R.Name now reflects that this is the core, 
+## shared function library for the whole PSD pipeline — expected to grow as 
+## cleaning logic gets more nuanced, not scoped to any one site or script.
 ################################################################################
 
 #Goal: To have a Rscript that only contains the functions used to clean and
@@ -24,6 +25,15 @@
 
 ## -----------------------------------------------------------------------------
 # FUNCTIONS IN THIS FILE:
+# Part 0 - Guards/Assertions
+#   assert_row_count_stable()       — stops the script if a row-preserving
+#                                      transformation (e.g. a 1:1 join)
+#                                      unexpectedly changed row count
+#   assert_row_count_not_increased() — stops the script if a filtering join
+#                                      (e.g. inner_join) unexpectedly
+#                                      gained rows (drops are OK, gains
+#                                      mean a duplicate join key)
+#
 # Part 1 - NSC Data Cleaning
 #   clean_nsc_names()       — standardizes NSC column names
 #   add_student_id()        — extracts and adds student ID
@@ -44,14 +54,63 @@
 ## -----------------------------------------------------------------------------
 
 ## -----------------------------------------------------------------------------
+## Part 0 - Guards/Assertions
+## -----------------------------------------------------------------------------
+
+#' Assert a transformation didn't change row count
+#'
+#' Used after any step that should be row-preserving (e.g. a left_join
+#' meant to add columns, not rows). If row count changed, that almost
+#' always means a duplicate/NA join key on the right-hand table caused a
+#' many-to-many fan-out — the exact bug that inflated nsc_data from 4543
+#' to 5067 rows via institution_lookup and master_stu_df duplicates.
+#' Fails loudly with stop() rather than letting the inflated row count
+#' silently flow downstream into the merged PSD.
+#'
+#' @param before Row count captured immediately before the operation
+#' @param df Data frame immediately after the operation
+#' @param step_name Label identifying the step, used in the error message
+#' @return df, invisibly, so this can be chained/wrapped around an assignment
+assert_row_count_stable <- function(before, df, step_name) {
+  if (nrow(df) != before) {
+    stop("⚠️ Row count changed during ", step_name, ": ",
+         before, " → ", nrow(df),
+         ". This step should be row-preserving — check for a duplicate ",
+         "or NA join key on the right-hand table before proceeding.")
+  }
+  invisible(df)
+}
+
+#' Assert a transformation didn't INCREASE row count
+#'
+#' Looser variant of assert_row_count_stable() for steps where some row
+#' loss is expected/normal (e.g. an inner_join() that legitimately drops
+#' unmatched records), but any row GAIN still signals a many-to-many
+#' fan-out from a duplicate join key and should fail loudly.
+#'
+#' @param before Row count captured immediately before the operation
+#' @param df Data frame immediately after the operation
+#' @param step_name Label identifying the step, used in the error message
+#' @return df, invisibly
+assert_row_count_not_increased <- function(before, df, step_name) {
+  if (nrow(df) > before) {
+    stop("⚠️ Row count INCREASED during ", step_name, ": ",
+         before, " → ", nrow(df),
+         ". A join here should only ever drop unmatched rows, never add ",
+         "extras — check for a duplicate join key on the right-hand table.")
+  }
+  invisible(df)
+}
+
+## -----------------------------------------------------------------------------
 ## Part 1 - NSC Data Cleaning
 ## -----------------------------------------------------------------------------
 
-# FUNCTION: clean_names_nsc_data
-# PURPOSE:  Standardizes NSC column names to PSD naming conventions
-# INPUT:    nsc_detail_report — raw NSC StudentTracker detail CSV
-# OUTPUT:   nsc_data — with renamed columns matching PSD schema
-# CALLED IN: 01-merge-nsc-to-psd.R, Part 1 step 1a
+#' Standardize NSC column names to PSD naming conventions
+#'
+#' @param nsc_data Raw NSC StudentTracker detail CSV
+#' @return nsc_data with renamed columns matching the PSD schema
+# Called in 01-merge-nsc-to-psd.R, Part 1 step 1a
 
 clean_names_nsc_data<-function(nsc_data){
   nsc_data<- clean_names(nsc_data)
@@ -68,16 +127,16 @@ clean_names_nsc_data<-function(nsc_data){
   return(nsc_data)
 }
 
-# FUNCTION: add_student_id
-# PURPOSE:  Extracts student ID from NSC unique identifier field
-# INPUT:    nsc_data — raw NSC data frame after clean_nsc_names()
-# OUTPUT:   nsc_data — with student_id column added, sorted by grad date
-# CALLED IN: 01-merge-nsc-to-psd.R, Part 1 step 2
+#' Extract student ID from NSC's unique identifier field
+#'
+#' @param nsc_data Raw NSC data frame after clean_nsc_names()
+#' @return nsc_data with student_id column added, sorted by grad date
+# Called in 01-merge-nsc-to-psd.R, Part 1 step 2
 
 add_student_id<-function(nsc_data){
   nsc_data <- nsc_data %>% 
     mutate(student_id = str_extract(string = your_unique_identifier,
-                                  pattern = "[\\d\\w\\d]+[^[:punct:]]"))
+                                    pattern = "[\\d\\w\\d]+[^[:punct:]]"))
   nsc_data <- select(nsc_data, student_id,  first_name, middle_name, last_name, name_suffix, req_return_field, record_found,
                      high_school_code, hs_grad_date, college_code, college_name, college_state, cc_4year, public_private,
                      enrollment_begin, enrollment_end, enrollment_status, he_graduated, coll_grad_date, degree_title, major, college_sequence,
@@ -88,47 +147,83 @@ add_student_id<-function(nsc_data){
 }
 
 
-# FUNCTION: add_psd_variables
-# PURPOSE:  Creates psd specific variables not part of the nsc_data: status_source,
-#           system_type, record_year, and record_term. Additionally, transforms 
-#           date strings to ymd dates.
-# INPUT:    nsc_data — raw NSC data frame after clean_nsc_names()
-# OUTPUT:   nsc_data — with status_source,system_type, record_year, 
-#           and record_term columns added. Additionally, transforms 
-#           date strings to ymd dates.
-# CALLED IN: 01-merge-nsc-to-psd.R, Part 1 step 5
+#' Create PSD-specific variables not part of the raw NSC data
+#'
+#' Adds status_source, system_type, record_year, and record_term.
+#' Also transforms date strings to ymd dates.
+#'
+#' @param nsc_data Raw NSC data frame after clean_nsc_names()
+#' @param institution_lookup Institution reference table, joined by
+#'   college_code to derive system_type
+#' @return nsc_data with status_source, system_type, record_year, and
+#'   record_term columns added, and date strings transformed to ymd dates
+# Called in 01-merge-nsc-to-psd.R, Part 1 step 5
 
 add_psd_variables<-function(nsc_data,institution_lookup){
+  n_in <- nrow(nsc_data)  # captured before the join, for the row-count guard below
+  
+  # Fix: institution_lookup can contain a duplicate/NA college_code (e.g.
+  # multiple rows with a blank code), which fans out the left_join below
+  # via dplyr's NA==NA matching. Dedupe before joining rather than
+  # silencing the warning with relationship="many-to-many", which hides
+  # the problem instead of preventing it. Coded and non-coded (NA-code)
+  # institutions are deduped separately so genuinely distinct non-coded
+  # colleges (e.g. foreign institutions with no NSC code) aren't collapsed
+  # into a single row and don't lose their own system_type.
+  institution_lookup_coded <- institution_lookup %>%
+    filter(!is.na(college_code)) %>%
+    distinct(college_code, .keep_all = TRUE)
+  
+  institution_lookup_uncoded <- institution_lookup %>%
+    filter(is.na(college_code)) %>%
+    distinct(college_name, .keep_all = TRUE)
+  
   nsc_data <- nsc_data %>%
-  # status_source values:
-  # NSC          — record confirmed by National Student Clearinghouse
-  # staff        — record confirmed by school counselor
-  # self-reported — student self-reported their enrollment
-  # old_psd      — record from pre-2019 database before long format conversion
-  # MISSING DATA — status unknown, follow-up needed
-  mutate(status_source = recode(record_found, "Y" = "NSC")) %>% 
-  # add grad year
-  mutate(hs_grad_year=str_match(string = nsc_data$hs_grad_date, pattern = '^\\d{4}')) %>% 
-  # Convert date strings to Date class 
-  # NSC currently sends dates in YYYYMMDD format
-  # Historical format handling (pre-2019) is managed by parse_dates()
+    # status_source values:
+    # NSC          — record confirmed by National Student Clearinghouse
+    # staff        — record confirmed by school counselor
+    # self-reported — student self-reported their enrollment
+    # old_psd      — record from pre-2019 database before long format conversion
+    # MISSING DATA — status unknown, follow-up needed
+    mutate(status_source = recode(record_found, "Y" = "NSC")) %>% 
+    # add grad year
+    mutate(hs_grad_year=str_match(string = nsc_data$hs_grad_date, pattern = '^\\d{4}')) %>% 
+    # Convert date strings to Date class 
+    # NSC currently sends dates in YYYYMMDD format
+    # Historical format handling (pre-2019) is managed by parse_dates()
     mutate(enrollment_begin_date = ymd(enrollment_begin),
            enrollment_end_date = ymd(enrollment_end),
            coll_grad_date_date = ymd(coll_grad_date),
            hs_grad_date_date = ymd(hs_grad_date)) %>% 
-  #join institution (sys_type) attributes using college_code
-  left_join(institution_lookup %>% 
-          select(college_code,system_type),
-          by = "college_code",
-          relationship = "many-to-many") %>% 
-  select(student_id,first_name, middle_name, last_name, name_suffix, record_found, req_return_field, high_school_code,
-         hs_grad_date_date, college_code, college_name, college_state, cc_4year, public_private,enrollment_begin_date,
-         enrollment_end_date,enrollment_status, he_graduated, coll_grad_date_date,degree_title, major, college_sequence,
-         program_code,status_source, system_type,hs_grad_year) %>%
+    #join institution (sys_type) attributes using college_code — coded
+    #institutions match on college_code; uncoded (NA college_code)
+    #institutions fall back to matching on college_name instead, so
+    #distinct non-coded colleges keep their own system_type rather than
+    #all collapsing onto whichever one row survived a code-only dedupe
+    left_join(institution_lookup_coded %>% 
+                select(college_code,system_type),
+              by = "college_code") %>% 
+    left_join(institution_lookup_uncoded %>%
+                select(college_name, system_type_by_name = system_type),
+              by = "college_name") %>%
+    mutate(system_type = coalesce(system_type, system_type_by_name)) %>%
+    select(-system_type_by_name) %>%
+    select(student_id,first_name, middle_name, last_name, name_suffix, record_found, req_return_field, high_school_code,
+           hs_grad_date_date, college_code, college_name, college_state, cc_4year, public_private,enrollment_begin_date,
+           enrollment_end_date,enrollment_status, he_graduated, coll_grad_date_date,degree_title, major, college_sequence,
+           program_code,status_source, system_type,hs_grad_year) %>%
     rename(hs_grad_date='hs_grad_date_date', #rename date variables
            enrollment_begin = 'enrollment_begin_date',
-          enrollment_end = 'enrollment_end_date',
+           enrollment_end = 'enrollment_end_date',
            coll_grad_date = 'coll_grad_date_date')
+  
+  # Guard: the institution_lookup join above should always be row-preserving.
+  # If it isn't, a duplicate/NA college_code or college_name has crept back
+  # into institution_lookup — fail loudly here instead of letting an
+  # inflated nsc_data flow downstream (this is what caused the 4543 → 5067
+  # row-count bug previously).
+  nsc_data <- assert_row_count_stable(n_in, nsc_data, "add_psd_variables() institution join")
+  
   #add record_year 
   nsc_data <- nsc_data %>%
     mutate(enrollment_year=year(enrollment_begin)) #figure out enrollment year
@@ -179,55 +274,80 @@ add_psd_variables<-function(nsc_data,institution_lookup){
 ## Part 2 - Merging
 ## -----------------------------------------------------------------------------
 
-# FUNCTION: merge_nsc_master
-# PURPOSE:  Merges demographic data from the student master list to the nsc data 
-#           frame
-# INPUT:  nsc_data    — NSC data frame after add_psd_variables()
-#         master_data — master student list with demographics
-# OUTPUT:   nsc_data - with hs_grad_year, gender, race/ethnicity, poverty indicator, hs_diploma
-#           psd_id
-# CALLED IN: 01-merge-nsc-to-psd.R, Part 2 step 2
+#' Merge demographic data from the master student list into the NSC data
+#'
+#' @param nsc_data NSC data frame after add_psd_variables()
+#' @param master_data Master student list with demographics
+#' @return nsc_data with hs_grad_year, gender, race/ethnicity, poverty
+#'   indicator, hs_diploma, and psd_id added
+# Called in 01-merge-nsc-to-psd.R, Part 2 step 2
 
 merge_nsc_master<-function(nsc_data, master_data){
+  n_in <- nrow(nsc_data)  # captured before the join, for the row-count guard below
+  
   # psd with student demos----
   merge_data<- inner_join(nsc_data, master_data,  by = "student_id") %>%
     relocate(psd_id, .after = last_col())
+  
+  # Guard: inner_join() here is expected to DROP unmatched rows (e.g. NSC
+  # records with no master list match), so an exact row-count match isn't
+  # required — but any INCREASE means a duplicate/NA student_id fan-out on
+  # the master_data side, which is what caused the 4543 → 5067 bug
+  # previously. Fail loudly instead of silently inflating the merge.
+  merge_data <- assert_row_count_not_increased(n_in, merge_data, "merge_nsc_master()")
+  
   return(merge_data)
 }
 
-# FUNCTION: parse_dates
-# PURPOSE:  Converts date columns to Date class for consistent analysis and merging
-#           Handles three date formats present in PSD history:
-#           - YYYYMMDD   — current NSC format (2019+)
-#           - M/D/YY     — old NSC format (pre-2019)
-#           - YYYY-MM-DD — saved PSD CSV format
-# INPUT:    df — any PSD data frame with date columns (nsc_data or psd_data)
-# OUTPUT:   df — with enrollment_begin, enrollment_end, coll_grad_date,
-#           hs_grad_date converted to Date class
-# CALLED IN: 01-merge-nsc-to-psd.R, Part 3 step 3b and Part 4 step 3
+#' Convert date columns to Date class for consistent analysis and merging
+#'
+#' Handles four date formats present in PSD history:
+#' \itemize{
+#'   \item YYYYMMDD — current NSC format (2019+)
+#'   \item M/D/YY — old NSC format (pre-2019)
+#'   \item YYYY-MM-DD — saved PSD CSV format
+#'   \item M/D/YY H:MM — spreadsheet-export artifact (see note below)
+#' }
+#'
+#' @param df Any PSD data frame with date columns (nsc_data or psd_data)
+#' @return df with enrollment_begin, enrollment_end, coll_grad_date, and
+#'   hs_grad_date converted to Date class
+# Called in 01-merge-nsc-to-psd.R, Part 3 step 3b and Part 4 step 3
+#
+# NOTE on the "M/D/YY H:MM" format: some historical rows carry a trailing
+# time component (e.g., "6/9/22 7:52") that is NOT a real recorded time —
+# confirmed by the same exact time appearing across records from entirely
+# different years/cohorts (2020, 2022, 2023 all showing "7:52"), which
+# rules out a genuine per-record timestamp. Most likely a spreadsheet
+# export artifact (Excel/Box stamping a date-only column with the file's
+# save/open time when it gets reformatted as datetime). as.Date() safely
+# discards the time component once parsed — these fields are inherently
+# date-only concepts (a graduation date has no meaningful time-of-day),
+# so dropping it is correct, not just convenient.
 
 parse_dates <- function(df) {
   df %>%
     mutate(
       enrollment_begin = as.Date(parse_date_time(enrollment_begin, 
-                                                 orders = c("Ymd", "mdy", "ymd"))),
+                                                 orders = c("Ymd", "mdy", "ymd", "mdy HM"))),
       enrollment_end   = as.Date(parse_date_time(enrollment_end,   
-                                                 orders = c("Ymd", "mdy", "ymd"))),
+                                                 orders = c("Ymd", "mdy", "ymd", "mdy HM"))),
       coll_grad_date   = as.Date(parse_date_time(coll_grad_date,   
-                                                 orders = c("Ymd", "mdy", "ymd"))),
+                                                 orders = c("Ymd", "mdy", "ymd", "mdy HM"))),
       hs_grad_date     = as.Date(parse_date_time(hs_grad_date,     
-                                                 orders = c("Ymd", "mdy", "ymd")))
+                                                 orders = c("Ymd", "mdy", "ymd", "mdy HM")))
     )
 }
 
-# FUNCTION: assign_column_classes 
-# PURPOSE:  Assigns correct data types to all non-date PSD columns and 
-#           standardizes text columns to uppercase for consistent filtering
-#           and reporting. "notes" column is excluded from uppercase conversion
-#           as it contains free-text staff input.
-# INPUT:    df — any PSD data frame (nsc_data or psd_data)
-# OUTPUT:   df — with correct column classes and uppercase text columns
-# CALLED IN: 01-merge-nsc-to-psd.R, Part 3 step 3a and Part 4 step 3
+#' Assign correct data types to all non-date PSD columns
+#'
+#' Standardizes text columns to uppercase for consistent filtering and
+#' reporting. The notes column is excluded from uppercase conversion since
+#' it contains free-text staff input.
+#'
+#' @param df Any PSD data frame (nsc_data or psd_data)
+#' @return df with correct column classes and uppercase text columns
+# Called in 01-merge-nsc-to-psd.R, Part 3 step 3a and Part 4 step 3
 
 # COLUMN CLASS REFERENCE
 # Column              Source    Class       toupper()   Rationale
@@ -306,15 +426,16 @@ assign_column_classes <- function(psd_data){
 }
 
 
-# FUNCTION: check_type
-# PURPOSE:  Compares column classes across multiple data frames to verify
-#           consistency before binding. Returns a table showing the class
-#           of each column in each data frame.
-# INPUT:    df_list  — list of data frames to compare
-#           df_names — optional character vector of names for each data frame
-# OUTPUT:   data frame with columns: column, and one column per data frame
-#           showing the class of each variable
-# CALLED IN: 01-merge-nsc-to-psd.R, Part 5 step 3b
+#' Compare column classes across multiple data frames
+#'
+#' Verifies consistency before binding. Returns a table showing the class
+#' of each column in each data frame.
+#'
+#' @param df_list List of data frames to compare
+#' @param df_names Optional character vector of names for each data frame
+#' @return Data frame with a "column" column, and one additional column per
+#'   input data frame showing the class of each variable
+# Called in 01-merge-nsc-to-psd.R, Part 5 step 3b
 check_type <- function(df_list, df_names = NULL) {
   
   # Assign names if not provided
@@ -344,15 +465,16 @@ check_type <- function(df_list, df_names = NULL) {
   return(result)
 }
 
-# FUNCTION: check_type_mismatch
-# PURPOSE:  Filters check_type() output to show only columns where class
-#           types differ across data frames. Returns empty data frame if
-#           all column classes match — confirms data frames are ready to bind.
-# INPUT:    df_list  — list of data frames to compare
-#           df_names — optional character vector of names for each data frame
-# OUTPUT:   data frame showing only mismatched columns and their classes
-#           Returns 0 rows if no mismatches found
-# CALLED IN: 01-merge-nsc-to-psd.R, Part 5 step 3b
+#' Filter check_type() output to only mismatched columns
+#'
+#' Returns an empty data frame if all column classes match — confirms the
+#' data frames are ready to bind.
+#'
+#' @param df_list List of data frames to compare
+#' @param df_names Optional character vector of names for each data frame
+#' @return Data frame showing only mismatched columns and their classes.
+#'   0 rows if no mismatches found.
+# Called in 01-merge-nsc-to-psd.R, Part 5 step 3b
 check_type_mismatch <- function(df_list, df_names = NULL) {
   tbl <- check_type(df_list, df_names)
   
@@ -367,34 +489,50 @@ check_type_mismatch <- function(df_list, df_names = NULL) {
 ## -----------------------------------------------------------------------------
 # NOTE: These are interactive QA tools for ad hoc investigation
 # They are NOT called by any pipeline script
-# Consider moving to psd_rfk_qa_tools.R in next cleanup pass
+# Consider moving to psd_qa_tools.R in next cleanup pass (not
+# psd_rfk_qa_tools.R — same site-agnostic naming reasoning as this file's
+# own rename from psd_rfk_function_list.R to psd_core_function_list.R)
 # Usage examples:
 # check_id(current_psd, "2024AFLB74")
 # check_person(current_psd, "MARIA", "GARCIA")
 # check_person_last(current_psd, "GARCIA")
 
-#To check and reference the excel sheet with the psd_may2022_nsc_only
-#dataframe, use the following functions:
-
-#check_person - creates dataframe filtered by the person's first and last names
+#' Filter a data frame by a person's first and last name
+#'
+#' @param data Data frame to filter
+#' @param firstname First name to match
+#' @param lastname Last name to match
+#' @return data filtered to rows matching both first_name and last_name
 check_person <- function(data, firstname, lastname){
   data %>% 
     filter((first_name == firstname) & (last_name == lastname))
 }
 
-#check_person_first - creates dataframe filtered by person's first name
+#' Filter a data frame by a person's first name
+#'
+#' @param data Data frame to filter
+#' @param firstname First name to match
+#' @return data filtered to rows matching first_name
 check_person_first <- function(data, firstname){
   data %>% 
     filter(first_name == firstname)
 }
 
-#check_person_last - creates dataframe filtered by person's last name
+#' Filter a data frame by a person's last name
+#'
+#' @param data Data frame to filter
+#' @param lastname Last name to match
+#' @return data filtered to rows matching last_name
 check_person_last <- function(data, lastname){
   data %>% 
     filter(last_name == lastname)
 }
 
-#check_id - creates dataframe filtered by student id
+#' Filter a data frame by student ID
+#'
+#' @param data Data frame to filter
+#' @param stu_id Student ID to match
+#' @return data filtered to rows matching student_id
 check_id <- function(data, stu_id){
   data %>% 
     filter(student_id == stu_id)
