@@ -80,14 +80,11 @@ r_review_csv <- "20260902-rfk-r-review-tracking-dimagiba.csv"
 contamination_corrections_csv <- "contamination_corrections_tracking.csv"
 
 # ⚠️ UPDATE: output filenames for this run.
-corrected_psd_filename <- "20261005-rfk-psd-dimagiba-dedup.csv"
-severity_tracking_filename <- "20261005-rfk-dedup-severity-tracking-dimagiba.csv"
+corrected_psd_filename <- "20261025-rfk-psd-sanchez-dedup.csv"
+severity_tracking_filename <- "20261025-rfk-dedup-severity-tracking-sanchez.csv"
 
-# ⚠️ UPDATE: filename per run.
-write.csv(removed_inferred_rows,
-          file = file.path(data_quality_dir,
-                           "20261005-rfk-removed-inferred-rows-dimagiba.csv"),
-          row.names = FALSE)
+# ⚠️ UPDATE: filename per run. Written to Data Quality in Part 8.
+removed_inferred_filename <- "20261025-rfk-removed-inferred-rows-sanchez.csv"
 ## -----------------------------------------------------------------------------
 ## Data Quality folder
 ## -----------------------------------------------------------------------------
@@ -114,8 +111,10 @@ previous_psd <- read_csv(file.path(box_file_dir,
                                    school_site_psd_folder,
                                    psd_filename),
                          col_types = cols(high_school_code = col_character(),
-                                          race_ethnicity = col_character())) %>%
-                mutate(high_school_code = str_pad(high_school_code, 6, pad ="0"))
+                                          race_ethnicity = col_character(),
+                                          program_code = col_character()
+                                          )) %>%
+  mutate(high_school_code = str_pad(high_school_code, 6, pad ="0"))
 
 master_stu_list <- read_csv(file.path(box_file_dir,
                                       "College and Career RPP",
@@ -132,30 +131,6 @@ institution_lookup <- read_csv(file.path(box_file_dir,
                                          "4. NSC Dataset",
                                          "institution_lookup.csv"))
 
-
-## -----------------------------------------------------------------------------
-## Part 2 - severe_review_tracking (rebuilt identically to
-## dedup-investigation.R's Part 6 — fully self-contained/hardcoded, no
-## file read needed for this piece specifically)
-## -----------------------------------------------------------------------------
-
-severe_review_tracking <- dedup_scope %>%
-  filter(severity == "severe") %>%
-  mutate(
-    reviewed = case_when(
-      psd_id %in% c("2013PNCQ15", "2013PSXY40", "2014NDJU56",
-                    "2021ZMDI63", "2021KBQP24") ~ TRUE,
-      TRUE ~ FALSE
-    ),
-    outcome = case_when(
-      psd_id == "2013PNCQ15" ~ "coherent - safe to collapse",
-      psd_id == "2013PSXY40" ~ "contamination suspected - needs separate handling",
-      psd_id == "2014NDJU56" ~ "coherent - safe to collapse",
-      psd_id == "2021ZMDI63" ~ "coherent - safe to collapse (confirmed via raw-row check post major-fix)",
-      psd_id == "2021KBQP24" ~ "coherent - safe to collapse (confirmed via raw-row check post major-fix)",
-      TRUE ~ NA_character_
-    )
-  )
 
 ## -----------------------------------------------------------------------------
 ## Part 3 - Read confirmed review outcomes from dedup-investigation.R's
@@ -360,6 +335,31 @@ nrow(dedup_scope)  # should match dedup-investigation.R's count exactly —
 
 safe_ids <- dedup_scope %>% filter(severity == "safe") %>% pull(psd_id)
 severe_ids <- dedup_scope %>% filter(severity == "severe") %>% pull(psd_id)
+
+## -----------------------------------------------------------------------------
+## Part 5b - severe_review_tracking (moved here: needs dedup_scope from Part 5; rebuilt identically to
+## dedup-investigation.R's Part 6 — fully self-contained/hardcoded, no
+## file read needed for this piece specifically)
+## -----------------------------------------------------------------------------
+
+severe_review_tracking <- dedup_scope %>%
+  filter(severity == "severe") %>%
+  mutate(
+    reviewed = case_when(
+      psd_id %in% c("2013PNCQ15", "2013PSXY40", "2014NDJU56",
+                    "2021ZMDI63", "2021KBQP24") ~ TRUE,
+      TRUE ~ FALSE
+    ),
+    outcome = case_when(
+      psd_id == "2013PNCQ15" ~ "coherent - safe to collapse",
+      psd_id == "2013PSXY40" ~ "contamination suspected - needs separate handling",
+      psd_id == "2014NDJU56" ~ "coherent - safe to collapse",
+      psd_id == "2021ZMDI63" ~ "coherent - safe to collapse (confirmed via raw-row check post major-fix)",
+      psd_id == "2021KBQP24" ~ "coherent - safe to collapse (confirmed via raw-row check post major-fix)",
+      TRUE ~ NA_character_
+    )
+  )
+
 
 
 ## -----------------------------------------------------------------------------
@@ -1121,7 +1121,7 @@ if (length(ids_with_zero_rows) > 0) {
 # 3 students' rows unconditionally, with no verification a review ever
 # happened. Now reads confirmed cases directly from r_review_tracking —
 # traceable back to an actual saved review, not a static assumption.
- targeted_removal_ids <- r_review_tracking %>%
+targeted_removal_ids <- r_review_tracking %>%
   filter(str_detect(outcome, "missin")) %>%   # catches "missingdata"/"missindata" typos
   pull(psd_id)
 
@@ -1148,6 +1148,11 @@ previous_psd_corrected <- previous_psd_corrected %>%
 
 cat(nrow(removed_inferred_rows), " stale INFERRED row(s) removed for ",
     length(targeted_removal_ids), " confirmed post-graduation psd_id(s).\n", sep = "")
+
+# Save a record of exactly which rows were removed
+write.csv(removed_inferred_rows,
+          file = file.path(data_quality_dir, removed_inferred_filename),
+          row.names = FALSE)
 
 
 ## -----------------------------------------------------------------------------
@@ -1271,12 +1276,12 @@ cat(n_superseded, " row(s) flagged as superseded by a later authoritative record
 previous_psd_corrected %>% 
   select(-superseded_by_later_record) %>%
   write.csv(file = file.path(box_file_dir,
-                           "College and Career RPP",
-                           "4. NSC Dataset",
-                           school_site,
-                           school_site_psd_folder,
-                           corrected_psd_filename),
-          row.names = FALSE)
+                             "College and Career RPP",
+                             "4. NSC Dataset",
+                             school_site,
+                             school_site_psd_folder,
+                             corrected_psd_filename),
+            row.names = FALSE)
 
 write.csv(severe_review_tracking,
           file = file.path(data_quality_dir, severity_tracking_filename),
