@@ -55,7 +55,7 @@ site_dir <- file.path(nsc_root, school_site, school_site_psd_folder)
 dq_dir   <- file.path(site_dir, "Data Quality")
 
 before_file   <- file.path(site_dir, "20260829-rfk-psd-dimagiba.csv")        # input
-after_file    <- file.path(site_dir, "20260904-rfk-psd-dimagiba-dedup.csv")  # output
+after_file    <- file.path(site_dir, "20261025-rfk-psd-sanchez-dedup.csv")  # output
 master_file   <- file.path(site_dir, "Master Student List",
                            "master-student-list-rfk-2012-2025.csv")
 identity_csv  <- file.path(dq_dir, "20260902-rfk-identity-review-tracking-dimagiba.csv")
@@ -64,7 +64,7 @@ contam_csv    <- file.path(dq_dir, "contamination_corrections_tracking.csv")
 
 severe_threshold <- 5   # must match both dedup scripts
 
-audit_out <- file.path(dq_dir, "20260924-rfk-dedup-audit.xlsx")
+audit_out <- file.path(dq_dir, "20261025-rfk-dedup-audit.xlsx")   # new dated name; keeps the 09/24 audit for comparison
 
 ## ---------------------------
 ## load (all as text)
@@ -72,8 +72,19 @@ audit_out <- file.path(dq_dir, "20260924-rfk-dedup-audit.xlsx")
 
 read_chr <- function(p) read_csv(p, col_types = cols(.default = "c"))
 
-before    <- read_chr(before_file)
+# high_school_code: the 08/29 input stores 51662 (leading zero lost), the
+# re-run writes 051662. Pad both so that difference isn't flagged on every row.
+before    <- read_chr(before_file) %>%
+  mutate(high_school_code = str_pad(high_school_code, 6, pad = "0"))
 after     <- read_chr(after_file)
+
+# Check the apply script's own padding BEFORE the audit pads it here:
+# expect ONE row, high_school_code = 051662
+hs_code_check <- after %>% count(high_school_code)
+print(hs_code_check)
+
+after     <- after %>%
+  mutate(high_school_code = str_pad(high_school_code, 6, pad = "0"))
 master    <- read_chr(master_file)
 identity_rt <- read_chr(identity_csv) %>% mutate(reviewed = as.logical(reviewed))
 r_rt        <- read_chr(r_review_csv) %>% mutate(reviewed = as.logical(reviewed))
@@ -117,8 +128,9 @@ scope_before <- scope_of(before) %>%
 safe_ids   <- scope_before %>% filter(severity == "safe")   %>% pull(psd_id)
 severe_ids <- scope_before %>% filter(severity == "severe") %>% pull(psd_id)
 
-# apply script: severe ids cleared ONLY on an exact outcome match
-cleared_severe <- c("2013PNCQ15", "2014NDJU56")
+# apply script: severe ids cleared via str_detect() on the outcome prefix
+# (ZMDI63 / KBQP24 added for the 10/25 re-run)
+cleared_severe <- c("2013PNCQ15", "2014NDJU56", "2021ZMDI63", "2021KBQP24")
 cleared_safe <- r_rt %>%
   filter(psd_id %in% safe_ids, str_detect(outcome, "^coherent - safe to collapse")) %>%
   pull(psd_id)
@@ -424,6 +436,8 @@ if ("superseded_by_later_record" %in% names(after)) {
 ## -----------------------------------------------------------------------------
 ## Summary + export
 ## -----------------------------------------------------------------------------
+
+flags$high_school_code_values <- hs_code_check   # expect 1 row: 051662
 
 summary_tbl <- tibble(check = names(flags), n_rows = map_int(flags, nrow))
 print(summary_tbl, n = Inf)
