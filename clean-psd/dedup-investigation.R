@@ -623,7 +623,7 @@ ids_to_review_identity <- identity_review_tracking %>%
 length(ids_to_review_identity)
 
 # ⚠️ UPDATE: filename per run.
-write.csv(identity_review_tracking_progress,
+write.csv(identity_review_tracking_progress,   # change to identity_review_tracking
           file = file.path(data_quality_dir,
                            "20260902-rfk-identity-review-tracking-dimagiba.csv"),
           row.names = FALSE)
@@ -802,6 +802,8 @@ contamination_corrections_tracking <- contamination_corrections_tracking %>%
 
 # Save progress after each id (or every few), so you don't lose review
 # work if the session ends
+contamination_corrections_tracking <- contamination_corrections_tracking %>%
+  distinct()
 write_csv(contamination_corrections_tracking,
           file.path(data_quality_dir, "contamination_corrections_tracking.csv"))
 
