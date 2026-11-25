@@ -623,7 +623,7 @@ ids_to_review_identity <- identity_review_tracking %>%
 length(ids_to_review_identity)
 
 # ⚠️ UPDATE: filename per run.
-write.csv(identity_review_tracking_progress,   # change to identity_review_tracking
+write.csv(identity_review_tracking,   # change to identity_review_tracking
           file = file.path(data_quality_dir,
                            "20260902-rfk-identity-review-tracking-dimagiba.csv"),
           row.names = FALSE)
